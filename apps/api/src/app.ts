@@ -2,7 +2,6 @@ import cookie from "@fastify/cookie";
 import helmet from "@fastify/helmet";
 import multipart from "@fastify/multipart";
 import rateLimit from "@fastify/rate-limit";
-import fastifyStatic from "@fastify/static";
 import Fastify, { type FastifyInstance } from "fastify";
 import { existsSync } from "node:fs";
 import path from "node:path";
@@ -150,6 +149,9 @@ export async function criarApp(ctx: Contexto): Promise<FastifyInstance> {
   const webDist = env.WEB_DIST ? path.resolve(env.WEB_DIST) : null;
   const servirWeb = !!webDist && existsSync(path.join(webDist, "index.html"));
   if (servirWeb && webDist) {
+    // Import dinâmico: na Vercel a CDN serve o frontend e este plugin nem é carregado
+    // (o runtime de lá não aceita require() de ESM, usado por uma dependência dele).
+    const { default: fastifyStatic } = await import("@fastify/static");
     await app.register(fastifyStatic, { root: webDist, wildcard: false, index: ["index.html"] });
   }
 
