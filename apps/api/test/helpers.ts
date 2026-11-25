@@ -38,11 +38,11 @@ export interface AppTeste {
   logs: RegistroInteracao[];
 }
 
-export async function criarAppTeste(opcoes: { ia?: boolean; limite?: boolean } = {}): Promise<AppTeste> {
+export async function criarAppTeste(opcoes: { ia?: boolean; limite?: boolean; cota?: () => Promise<boolean> } = {}): Promise<AppTeste> {
   const env = carregarEnv({ ...process.env, NODE_ENV: "test", RATE_LIMIT: opcoes.limite ? "on" : "off", DATABASE_URL: "file:./test-suite.db", AI_PROVIDER: "none", APP_ORIGIN: "http://localhost:5173" });
   const fake = opcoes.ia ? new ProvedorFake() : null;
   const logs: RegistroInteracao[] = [];
-  const ia = new ServicoIA(fake, { ...env, AI_MODEL: "fake-1" }, (r) => void logs.push(r));
+  const ia = new ServicoIA(fake, { ...env, AI_MODEL: "fake-1" }, (r) => void logs.push(r), {}, opcoes.cota);
   const app = await criarApp({ env, db, ia });
   await app.ready();
   return { app, fake, logs };

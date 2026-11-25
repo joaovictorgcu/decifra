@@ -86,6 +86,27 @@ describe("autenticação e segurança", () => {
     await lim.app.close();
   });
 
+  it("não deixa contornar o CSRF com caminho codificado (/%61pi/...)", async () => {
+    const r = await t.app.inject({ method: "POST", url: "/%61pi/auth/logout", payload: {} });
+    expect(r.statusCode).toBe(403);
+  });
+
+  it("não confia em X-Forwarded-For forjado sem proxy configurado", async () => {
+    const lim = await criarAppTeste({ limite: true });
+    const status: number[] = [];
+    for (let i = 0; i < 12; i++) {
+      const r = await lim.app.inject({
+        method: "POST",
+        url: "/api/auth/login",
+        payload: { email: "x@x.dev", senha: "errada123" },
+        headers: { "x-decifra": "1", "x-forwarded-for": `6.6.6.${i}` },
+      });
+      status.push(r.statusCode);
+    }
+    expect(status.at(-1)).toBe(429);
+    await lim.app.close();
+  });
+
   it("envia cabeçalhos de segurança", async () => {
     const r = await t.app.inject({ method: "GET", url: "/api/saude" });
     expect(r.headers["content-security-policy"]).toBeTruthy();
@@ -252,6 +273,20 @@ describe("tradutor e entrevista", () => {
   });
 });
 
+describe("cota diária de IA", () => {
+  it("acima do teto, tarefas usam o motor de regras e a importação responde 429", async () => {
+    const semCota = await criarAppTeste({ ia: true, cota: async () => false });
+    const c = await novoCandidato(semCota.app, "cota@teste.dev");
+    semCota.fake!.respostas.requisitos_da_vaga = { requisitos: [{ requisito: "SQL", curto: "SQL", tipo: "tecnica", kind: "", obrig: true, evId: "" }] };
+    const r = (await c.post("/api/vagas", { texto: VAGA_DADOS })).json();
+    expect(r.fonte).toBe("regras");
+    expect(semCota.fake!.pedidos).toHaveLength(0);
+    const m = multipart("cv.txt", "Ana Souza, analista com experiência em relatórios.");
+    expect((await c.req("POST", "/api/evidencias/importar/analisar", m.corpo, { "content-type": m.tipo })).statusCode).toBe(429);
+    await semCota.app.close();
+  });
+});
+
 describe("Mentor (IA conversacional)", () => {
   it("responde 503 quando a IA não está configurada", async () => {
     const c = await novoCandidato(t.app);
@@ -387,10 +422,52 @@ describe("conta (LGPD)", () => {
     expect(ex.json().evidencias).toHaveLength(1);
     expect(JSON.stringify(ex.json())).not.toContain("passwordHash");
     expect((await c.post("/api/conta/senha", { senhaAtual: "errada", novaSenha: "outrasenha1" })).statusCode).toBe(400);
+    const antes = c.cookie;
     expect((await c.post("/api/conta/senha", { senhaAtual: "senhaforte1", novaSenha: "outrasenha1" })).statusCode).toBe(200);
+    expect(c.cookie).not.toBe(antes);
+    expect((await c.get("/api/auth/sessao")).statusCode).toBe(200);
     expect((await c.del("/api/conta", { senha: "senhaforte1" })).statusCode).toBe(400);
     expect((await c.del("/api/conta", { senha: "outrasenha1" })).statusCode).toBe(200);
     expect(await db.evidence.count()).toBe(0);
     expect(await db.user.count()).toBe(0);
+  });
+});
+
+describe("leitura de PDF", () => {
+  /** Monta um PDF mínimo válido (com tabela xref correta) contendo o texto informado. */
+  function pdfCom(texto: string): Buffer {
+    const conteudo = `BT /F1 12 Tf 72 720 Td (${texto}) Tj ET`;
+    const objs = [
+      "<< /Type /Catalog /Pages 2 0 R >>",
+      "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+      "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
+      `<< /Length ${conteudo.length} >>\nstream\n${conteudo}\nendstream`,
+      "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    ];
+    let out = "%PDF-1.4\n";
+    const offs: number[] = [];
+    objs.forEach((o, i) => {
+      offs.push(out.length);
+      out += `${i + 1} 0 obj\n${o}\nendobj\n`;
+    });
+    const xref = out.length;
+    out += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n${offs.map((o) => `${String(o).padStart(10, "0")} 00000 n \n`).join("")}`;
+    out += `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
+    return Buffer.from(out, "latin1");
+  }
+
+  it("extrai o texto de um PDF enviado", async () => {
+    const c = await novoCandidato(t.app);
+    const m = multipart("vaga.pdf", pdfCom("Requisitos: SQL e Power BI para analista de dados junior"), "application/pdf");
+    const r = await c.req("POST", "/api/arquivos/texto", m.corpo, { "content-type": m.tipo });
+    expect(r.statusCode).toBe(200);
+    expect(r.json().texto).toContain("Power BI");
+  });
+
+  it("recusa PDF corrompido com mensagem clara", async () => {
+    const c = await novoCandidato(t.app);
+    const m = multipart("ruim.pdf", Buffer.from("%PDF-1.4 lixo sem estrutura"), "application/pdf");
+    const r = await c.req("POST", "/api/arquivos/texto", m.corpo, { "content-type": m.tipo });
+    expect([422]).toContain(r.statusCode);
   });
 });

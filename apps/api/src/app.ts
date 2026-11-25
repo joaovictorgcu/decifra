@@ -43,7 +43,8 @@ const METODOS_SEGUROS = new Set(["GET", "HEAD", "OPTIONS"]);
 export async function criarApp(ctx: Contexto): Promise<FastifyInstance> {
   const { env } = ctx;
   const app = Fastify({
-    trustProxy: env.TRUST_PROXY,
+    // Número de proxies confiáveis à frente da API (0 = nenhum). Nunca confiar na cadeia inteira de X-Forwarded-For.
+    trustProxy: env.TRUST_PROXY > 0 ? (_endereco: string, salto: number) => salto < env.TRUST_PROXY : false,
     bodyLimit: 1024 * 1024,
     logger:
       env.NODE_ENV === "test"
@@ -86,10 +87,12 @@ export async function criarApp(ctx: Contexto): Promise<FastifyInstance> {
    * Proteção contra CSRF: requisições que alteram dados precisam do cabeçalho
    * x-decifra (que força preflight CORS, nunca liberado para outras origens) e,
    * quando o navegador envia Origin, ela precisa ser a do próprio app.
+   * Vale para qualquer caminho: o roteador decodifica a URL (ex.: /%61pi/...),
+   * então filtrar por prefixo de req.url permitiria contornar a checagem.
    */
   const origens = new Set([new URL(env.APP_ORIGIN).origin]);
   app.addHook("onRequest", async (req) => {
-    if (!req.url.startsWith("/api/") || METODOS_SEGUROS.has(req.method)) return;
+    if (METODOS_SEGUROS.has(req.method)) return;
     const origem = req.headers.origin;
     if (origem && !origens.has(origem)) throw new ErroApp(403, "origem", "Origem da requisição não permitida.");
     if (req.headers["x-decifra"] !== "1") throw new ErroApp(403, "csrf", "Requisição sem o cabeçalho de segurança do app.");
@@ -122,7 +125,7 @@ export async function criarApp(ctx: Contexto): Promise<FastifyInstance> {
 
   app.get("/api/saude", async () => {
     await ctx.db.$queryRaw`SELECT 1`;
-    return { ok: true, ia: ctx.ia.nomeProvedor };
+    return { ok: true };
   });
 
   await app.register(

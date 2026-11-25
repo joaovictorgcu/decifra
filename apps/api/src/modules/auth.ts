@@ -48,13 +48,14 @@ export async function rotasAuth(app: FastifyInstance) {
     return montarSessao(app.ctx, novo);
   });
 
-  app.post("/conta/senha", limiteAuth, async (req) => {
+  app.post("/conta/senha", limiteAuth, async (req, reply) => {
     const u = exigirLogin(req);
     const d = validar(trocaSenhaSchema, req.body);
     if (!(await conferirSenha(d.senhaAtual, u.passwordHash))) throw new ErroApp(400, "senha", "A senha atual está incorreta.", "senhaAtual");
     await db.user.update({ where: { id: u.id }, data: { passwordHash: await gerarHash(d.novaSenha) } });
-    // Encerra as outras sessões ao trocar a senha.
-    await db.session.deleteMany({ where: { userId: u.id, NOT: { id: req.sessaoId ?? "" } } });
+    // Encerra todas as sessões (inclusive a atual) e emite um token novo para este dispositivo.
+    await db.session.deleteMany({ where: { userId: u.id } });
+    await iniciarSessao(app, reply, req, u.id);
     return { ok: true };
   });
 

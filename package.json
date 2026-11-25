@@ -25,6 +25,7 @@
     "lint": "npm run typecheck"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.14.1",
     "@playwright/test": "^1.65.1",
     "concurrently": "^9.2.1",
     "typescript": "^5.9.3"

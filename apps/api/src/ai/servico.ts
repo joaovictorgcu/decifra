@@ -1,6 +1,7 @@
 import type { z } from "zod";
 import type { Env } from "../config/env";
 import { ProvedorAnthropic } from "./providers/anthropic";
+import { ProvedorMock } from "./providers/mock";
 import { ProvedorOpenAI } from "./providers/openai";
 import { ErroIA, type Esforco, type MensagemIA, type ProvedorIA, type TarefaIA } from "./tipos";
 
@@ -20,6 +21,7 @@ const PERFIS: Record<TarefaIA, { nivel: "rapido" | "principal"; esforco: Esforco
 
 const MODELO_PADRAO: Partial<Record<Env["AI_PROVIDER"], string>> = {
   anthropic: "claude-opus-5-5",
+  mock: "mock",
 };
 
 export interface RegistroInteracao {
@@ -42,6 +44,8 @@ export class ServicoIA {
     private readonly env: Pick<Env, "AI_MODEL" | "AI_MODEL_FAST" | "AI_TIMEOUT_MS" | "AI_PROVIDER">,
     private readonly registrar: Registrador,
     private readonly modelosPorTarefa: Partial<Record<TarefaIA, string>> = {},
+    /** Cota por usuário: devolve false quando a pessoa já passou do teto diário. */
+    private readonly dentroDaCota: (userId: string) => Promise<boolean> = async () => true,
   ) {}
 
   get ativa(): boolean {
@@ -65,6 +69,7 @@ export class ServicoIA {
     p: { sistema: string; mensagem: string; schema: z.ZodType<T>; nomeSchema: string },
   ): Promise<T> {
     const provedor = this.exigir();
+    await this.checarCota(userId);
     const perfil = PERFIS[tarefa];
     const modelo = this.modeloDe(tarefa);
     return this.medir(tarefa, userId, modelo, async (signal) => {
@@ -81,6 +86,7 @@ export class ServicoIA {
     sinalExterno?: AbortSignal,
   ): Promise<string> {
     const provedor = this.exigir();
+    await this.checarCota(userId);
     const perfil = PERFIS[tarefa];
     const modelo = this.modeloDe(tarefa);
     return this.medir(
@@ -93,6 +99,10 @@ export class ServicoIA {
       },
       sinalExterno,
     );
+  }
+
+  private async checarCota(userId: string | null) {
+    if (userId && !(await this.dentroDaCota(userId))) throw new ErroIA("limite", "Teto diário de uso da IA atingido.");
   }
 
   private exigir(): ProvedorIA {
@@ -159,6 +169,8 @@ export function criarProvedor(env: Env): ProvedorIA | null {
       return new ProvedorOpenAI("openai", { apiKey: env.OPENAI_API_KEY, baseURL: env.OPENAI_BASE_URL });
     case "openai-compatible":
       return new ProvedorOpenAI("openai-compatible", { apiKey: env.OPENAI_API_KEY, baseURL: env.OPENAI_BASE_URL });
+    case "mock":
+      return new ProvedorMock();
     default:
       return null;
   }

@@ -14,6 +14,12 @@ export function criarContexto(): Contexto {
       await db.aiInteraction.create({ data: r });
     },
     modelosPorTarefaDoAmbiente(),
+    async (userId) => {
+      const desde = new Date();
+      desde.setHours(0, 0, 0, 0);
+      const usados = await db.aiInteraction.count({ where: { userId, createdAt: { gte: desde } } });
+      return usados < env.AI_LIMITE_DIARIO;
+    },
   );
   return { env, db, ia };
 }
