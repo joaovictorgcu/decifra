@@ -1,0 +1,32 @@
+{
+  "name": "decifra",
+  "version": "1.0.0",
+  "private": true,
+  "description": "DECIFRA: plataforma de transição de carreira baseada em evidências, com IA.",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=20.19"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "setup": "npm install && npm run db:migrate",
+    "dev": "concurrently -n api,web -c cyan,magenta \"npm run dev -w @decifra/api\" \"npm run dev -w @decifra/web\"",
+    "build": "npm run build -w @decifra/web && npm run build -w @decifra/api",
+    "start": "npm run start -w @decifra/api",
+    "db:migrate": "npm run db:migrate -w @decifra/api",
+    "db:deploy": "npm run db:deploy -w @decifra/api",
+    "admin": "npm run admin -w @decifra/api --",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "test:e2e": "playwright test",
+    "lint": "npm run typecheck"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.1",
+    "concurrently": "^9.2.1",
+    "typescript": "^5.9.3"
+  }
+}
