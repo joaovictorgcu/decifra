@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { ErroRequisicao } from "./api/cliente";
 import { App } from "./App";
+import { BarreiraErro } from "./components/BarreiraErro";
 import { ProvedorSessao } from "./lib/sessao";
 import "./styles/global.css";
 
@@ -22,7 +23,9 @@ createRoot(document.getElementById("root")!).render(
     <QueryClientProvider client={qc}>
       <BrowserRouter>
         <ProvedorSessao>
-          <App />
+          <BarreiraErro>
+            <App />
+          </BarreiraErro>
         </ProvedorSessao>
       </BrowserRouter>
     </QueryClientProvider>

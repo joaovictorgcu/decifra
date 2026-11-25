@@ -13,7 +13,7 @@ import type { FastifyInstance } from "fastify";
 import { descreverMeta, extrairRequisitosIA } from "../ai/tarefas";
 import { extrairRequisitos } from "../domain/extrair";
 import { grau } from "../domain/raio";
-import { norm } from "../domain/texto";
+import { hojeISO, norm } from "../domain/texto";
 import { ErroApp, naoEncontrado, validar } from "../lib/erros";
 import { evidenciaDom, vagaEmpresaDto } from "../lib/mapear";
 import { exigirEmpresa } from "../plugins/auth";
@@ -119,7 +119,7 @@ export async function rotasEmpresa(app: FastifyInstance) {
   app.post("/empresa/desafios", async (req, reply) => {
     const u = exigirEmpresa(req);
     const d = validar(desafioSchema, req.body);
-    if (d.prazo < new Date().toISOString().slice(0, 10)) throw new ErroApp(400, "validacao", "O prazo precisa ser hoje ou uma data futura.", "prazo");
+    if (d.prazo < hojeISO()) throw new ErroApp(400, "validacao", "O prazo precisa ser hoje ou uma data futura.", "prazo");
     const c = await db.challenge.create({
       data: { companyId: u.id, titulo: d.titulo, vaga: d.vaga || "Vaga não indicada", competencia: d.competencia, descricao: d.descricao, prazo: d.prazo },
     });

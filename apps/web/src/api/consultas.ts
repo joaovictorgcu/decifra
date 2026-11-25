@@ -37,26 +37,26 @@ export function useSessaoQuery() {
   });
 }
 
-const lista = <T,>(chave: unknown[], url: string, opcoes: Partial<UseQueryOptions<T[]>> = {}) =>
+const useLista = <T,>(chave: unknown[], url: string, opcoes: Partial<UseQueryOptions<T[]>> = {}) =>
   useQuery<T[]>({ queryKey: chave, queryFn: async () => (await api.get<Paginado<T>>(url)).itens, ...opcoes });
 
-export const useEvidencias = () => lista<Evidencia>(["evidencias"], "/evidencias");
-export const useVagas = () => lista<VagaResumo>(["vagas"], "/vagas");
-export const useTarefas = () => lista<Tarefa>(["tarefas"], "/tarefas");
-export const useSugestoes = () => lista<{ competencia: string; texto: string; vagas: number }>(["sugestoes"], "/plano/sugestoes");
-export const useCandidaturas = () => lista<Candidatura>(["candidaturas"], "/candidaturas");
-export const useHistorias = (ativo: boolean) => lista<Historia>(["historias"], "/historias", { enabled: ativo });
-export const useConversas = () => lista<Conversa>(["conversas"], "/mentor/conversas");
-export const useDesafiosAbertos = () => lista<Desafio>(["desafios"], "/desafios");
+export const useEvidencias = () => useLista<Evidencia>(["evidencias"], "/evidencias");
+export const useVagas = () => useLista<VagaResumo>(["vagas"], "/vagas");
+export const useTarefas = () => useLista<Tarefa>(["tarefas"], "/tarefas");
+export const useSugestoes = () => useLista<{ competencia: string; texto: string; vagas: number }>(["sugestoes"], "/plano/sugestoes");
+export const useCandidaturas = () => useLista<Candidatura>(["candidaturas"], "/candidaturas");
+export const useHistorias = (ativo: boolean) => useLista<Historia>(["historias"], "/historias", { enabled: ativo });
+export const useConversas = () => useLista<Conversa>(["conversas"], "/mentor/conversas");
+export const useDesafiosAbertos = () => useLista<Desafio>(["desafios"], "/desafios");
 export const useVagasAbertas = () =>
-  lista<{ id: string; titulo: string; empresa: string; selo: boolean; requisitos: number; criadaEm: string; minhaVagaId: string | null }>(
+  useLista<{ id: string; titulo: string; empresa: string; selo: boolean; requisitos: number; criadaEm: string; minhaVagaId: string | null }>(
     ["vagas-abertas"],
     "/vagas-abertas",
   );
-export const useVagasEmpresa = () => lista<VagaEmpresa & { publicada: boolean; analises: number }>(["empresa", "vagas"], "/empresa/vagas");
-export const useDesafiosEmpresa = () => lista<Desafio>(["empresa", "desafios"], "/empresa/desafios");
+export const useVagasEmpresa = () => useLista<VagaEmpresa & { publicada: boolean; analises: number }>(["empresa", "vagas"], "/empresa/vagas");
+export const useDesafiosEmpresa = () => useLista<Desafio>(["empresa", "desafios"], "/empresa/desafios");
 export const useBuscaCandidatos = (q: string) =>
-  lista<CandidatoBusca>(["empresa", "candidatos", q], `/empresa/candidatos?q=${encodeURIComponent(q)}`);
+  useLista<CandidatoBusca>(["empresa", "candidatos", q], `/empresa/candidatos?q=${encodeURIComponent(q)}`);
 
 export function useVaga(id: string | undefined) {
   return useQuery<VagaDetalhe>({ queryKey: ["vaga", id], queryFn: () => api.get<VagaDetalhe>(`/vagas/${id}`), enabled: !!id });

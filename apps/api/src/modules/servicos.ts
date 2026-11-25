@@ -7,13 +7,9 @@ import type { EvidenciaDom, VagaDom } from "../domain/tipos";
 
 /** Consultas e regras compartilhadas entre módulos. */
 
-export function inicioDoMes(d = new Date()): Date {
-  return new Date(d.getFullYear(), d.getMonth(), 1);
-}
+import { inicioDoDia, inicioDoMes } from "../lib/datas";
 
-export function inicioDoDia(d = new Date()): Date {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
-}
+export { inicioDoDia, inicioDoMes };
 
 export async function contarUso(db: Db, userId: string, tipo: "raio_x" | "mentor", desde: Date): Promise<number> {
   return db.usageEvent.count({ where: { userId, tipo, createdAt: { gte: desde } } });

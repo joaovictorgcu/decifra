@@ -1,10 +1,12 @@
+import { dataLocal, somarDias } from "../lib/datas";
+
 /** Utilitários de texto do motor de análise (portados do protótipo). */
 
 export function norm(s: unknown): string {
   return String(s ?? "")
     .toLowerCase()
     .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "");
+    .replace(/[\u0300-\u036f]/g, "");
 }
 
 export function semPonto(s: string): string {
@@ -23,10 +25,12 @@ export function escaparRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+/** Data (AAAA-MM-DD) daqui a N dias, no fuso do produto. */
 export function dataMais(dias: number, base = new Date()): string {
-  return new Date(base.getTime() + dias * 864e5).toISOString().slice(0, 10);
+  return somarDias(dias, base);
 }
 
+/** Hoje (AAAA-MM-DD) no fuso do produto, não em UTC. */
 export function hojeISO(): string {
-  return new Date().toISOString().slice(0, 10);
+  return dataLocal();
 }

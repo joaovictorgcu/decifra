@@ -6,6 +6,7 @@ import { SISTEMA_MENTOR, marcar } from "../ai/prompts";
 import { descreverMeta } from "../ai/tarefas";
 import { ErroIA, type MensagemIA } from "../ai/tipos";
 import { completa, faltas, raio } from "../domain/raio";
+import { hojeISO } from "../domain/texto";
 import { ErroApp, naoEncontrado, validar } from "../lib/erros";
 import { lerLista } from "../lib/json";
 import { respostaErroIA } from "../lib/mensagens-ia";
@@ -42,7 +43,7 @@ export async function rotasMentor(app: FastifyInstance) {
       db.task.findMany({ where: { userId: u.id, status: { not: "feito" } }, orderBy: { prazo: "asc" }, take: 10 }),
       db.application.findMany({ where: { userId: u.id }, include: { job: { select: { titulo: true } } }, orderBy: { updatedAt: "desc" }, take: 15 }),
     ]);
-    const hoje = new Date().toISOString().slice(0, 10);
+    const hoje = hojeISO();
     const l: string[] = [`Data de hoje: ${hoje}`, `Nome: ${u.nome}`, `Plano: ${u.plano === "plus" ? "Candidato Plus" : "Candidato grátis"}`];
     if (perfil) {
       l.push(

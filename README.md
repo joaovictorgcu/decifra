@@ -107,7 +107,8 @@ Outros comandos: `npm run admin -- uso-ia 7` (uso e latência da IA nos últimos
 | `npm run db:migrate` | Cria/aplica migrações em desenvolvimento |
 | `npm run db:deploy` | Aplica migrações em produção |
 | `npm run typecheck` | Verificação de tipos de todos os pacotes |
-| `npm test` | Testes unitários, de integração e de roteamento da IA (79 testes, sem chamadas reais) |
+| `npm run lint` | ESLint (TypeScript e regras de hooks do React) |
+| `npm test` | Testes da API (unitários, integração, roteamento da IA, fuso) e do frontend (parser SSE e renderizador seguro), sem chamadas reais de IA |
 | `npm run avaliar:ia -w @decifra/api` | Avaliação real das tarefas de IA nos provedores configurados (ignora pagos sem `--permitir-pagos`) |
 | `npm run test:e2e` | Testes de interface (Playwright) em desktop, tablet e celular. Rode `npm run build` antes. Na primeira vez: `npx playwright install chromium` |
 

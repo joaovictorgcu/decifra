@@ -37,6 +37,7 @@ export function Mentor() {
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<{ mensagem: string; repetir: string | null } | null>(null);
   const [excluir, setExcluir] = useState(false);
+  const [anuncio, setAnuncio] = useState("");
   const cancelar = useRef<AbortController | null>(null);
   /** A troca de URL veio do próprio envio (conversa nova): não limpa o aviso de erro. */
   const navegouAposEnvio = useRef(false);
@@ -75,6 +76,7 @@ export function Mentor() {
     setErro(null);
     setTexto("");
     setEnviando(true);
+    setAnuncio("Mentor respondendo…");
     const idUser = `u${Date.now()}`;
     const idResp = `r${Date.now()}`;
     setMsgs((l) => [...l, { id: idUser, papel: "user", conteudo: m, ia: null, interrompida: false }, { id: idResp, papel: "assistant", conteudo: "", ia: null, interrompida: false }]);
@@ -98,6 +100,7 @@ export function Mentor() {
             atualizar((x) => ({ ...x, conteudo: x.conteudo + t }));
           },
           fim: (d) => {
+            setAnuncio("O Mentor respondeu.");
             if (!id) novaId = d.conversaId;
             atualizar((x) => ({ ...x, id: d.mensagem.id, ia: d.mensagem.ia, interrompida: d.mensagem.interrompida }));
           },
@@ -208,7 +211,11 @@ export function Mentor() {
               </div>
             </div>
           )}
-          <div className="mensagens" aria-live="polite" aria-busy={enviando}>
+          {/* O texto chega aos pedaços: anunciar cada trecho sobrecarrega o leitor de tela. Anuncia só o fim. */}
+          <p className="so-leitor" role="status">
+            {anuncio}
+          </p>
+          <div className="mensagens" aria-busy={enviando}>
             {msgs.map((m) => (
               <div key={m.id} className={`msg ${m.papel}`}>
                 <span className="so-leitor">{m.papel === "user" ? "Você disse:" : "Mentor:"}</span>

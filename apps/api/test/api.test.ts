@@ -83,10 +83,33 @@ describe("autenticação e segurança", () => {
     const lim = await criarAppTeste({ limite: true });
     const c = new Cliente(lim.app);
     const status: number[] = [];
-    for (let i = 0; i < 12; i++) status.push((await c.post("/api/auth/login", { email: "x@x.dev", senha: "errada123" })).statusCode);
+    // E-mails diferentes: isola o limite por IP do limite por e-mail.
+    for (let i = 0; i < 12; i++) status.push((await c.post("/api/auth/login", { email: `x${i}@x.dev`, senha: "errada123" })).statusCode);
     expect(status.slice(0, 10).every((s) => s === 401)).toBe(true);
     expect(status.at(-1)).toBe(429);
     await lim.app.close();
+  });
+
+  it("bloqueia o e-mail após 5 senhas erradas, mesmo de IPs diferentes", async () => {
+    await novoCandidato(t.app, "alvo@teste.dev");
+    const status: number[] = [];
+    for (let i = 0; i < 6; i++) {
+      const r = await t.app.inject({
+        method: "POST",
+        url: "/api/auth/login",
+        payload: { email: "alvo@teste.dev", senha: `errada${i}` },
+        headers: { "x-decifra": "1" },
+        remoteAddress: `10.0.0.${i}`,
+      });
+      status.push(r.statusCode);
+    }
+    expect(status.slice(0, 5)).toEqual([401, 401, 401, 401, 401]);
+    expect(status[5]).toBe(429);
+    // Nem a senha certa entra durante o bloqueio; outro e-mail não é afetado.
+    const certa = await new Cliente(t.app).post("/api/auth/login", { email: "alvo@teste.dev", senha: "senhaforte1" });
+    expect(certa.json().codigo).toBe("tentativas");
+    await novoCandidato(t.app, "outro@teste.dev");
+    expect((await new Cliente(t.app).post("/api/auth/login", { email: "outro@teste.dev", senha: "senhaforte1" })).statusCode).toBe(200);
   });
 
   it("não deixa contornar o CSRF com caminho codificado (/%61pi/...)", async () => {
@@ -101,7 +124,7 @@ describe("autenticação e segurança", () => {
       const r = await lim.app.inject({
         method: "POST",
         url: "/api/auth/login",
-        payload: { email: "x@x.dev", senha: "errada123" },
+        payload: { email: `y${i}@x.dev`, senha: "errada123" },
         headers: { "x-decifra": "1", "x-forwarded-for": `6.6.6.${i}` },
       });
       status.push(r.statusCode);
@@ -452,6 +475,7 @@ describe("conta (LGPD)", () => {
     const ex = await c.get("/api/conta/exportar");
     expect(ex.headers["content-disposition"]).toContain("attachment");
     expect(ex.json().evidencias).toHaveLength(1);
+    expect(Array.isArray(ex.json().usoIA)).toBe(true);
     expect(JSON.stringify(ex.json())).not.toContain("passwordHash");
     expect((await c.post("/api/conta/senha", { senhaAtual: "errada", novaSenha: "outrasenha1" })).statusCode).toBe(400);
     const antes = c.cookie;

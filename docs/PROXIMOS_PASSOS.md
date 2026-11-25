@@ -26,7 +26,6 @@ Itens que mudam o escopo do produto ou dependem de serviços externos. Ficaram d
 
 - PostgreSQL em produção e armazenamento compartilhado (Redis) para rate limit com várias instâncias.
 - Cotas contadas na mesma transação que registra o uso (hoje, requisições simultâneas podem passar um pouco do limite).
-- Limite de tentativas de login por e-mail, além do limite por IP.
 - O cadastro informa quando o e-mail já existe (escolha de usabilidade); com verificação de e-mail, dá para trocar por uma resposta neutra.
 - Conjunto de avaliação da extração de requisitos com vagas reais revisadas por empresas.
 - Migrar para o Prisma 7: as vulnerabilidades apontadas pelo `npm audit` (`effect`, `deepmerge-ts`) estão no CLI do Prisma 6, usado só em desenvolvimento e migrações; a correção exige a versão 7 (mudança de configuração e adaptadores de banco).

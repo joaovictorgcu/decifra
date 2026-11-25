@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { ErroApp, validar } from "../lib/erros";
 import { evidenciaDto, perfilDto, usuarioDto } from "../lib/mapear";
 import { HASH_FICTICIO, conferirSenha, gerarHash } from "../lib/senha";
+import { LimiteTentativas } from "../lib/tentativas";
 import { encerrarSessao, exigirLogin, iniciarSessao } from "../plugins/auth";
 import { montarSessao } from "./servicos";
 
@@ -10,6 +11,7 @@ import { montarSessao } from "./servicos";
 export async function rotasAuth(app: FastifyInstance) {
   const { db } = app.ctx;
   const limiteAuth = { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } };
+  const tentativas = new LimiteTentativas();
 
   app.post("/auth/cadastro", limiteAuth, async (req, reply) => {
     const d = validar(cadastroSchema, req.body);
@@ -23,10 +25,19 @@ export async function rotasAuth(app: FastifyInstance) {
 
   app.post("/auth/login", limiteAuth, async (req, reply) => {
     const d = validar(loginSchema, req.body);
+    const espera = tentativas.bloqueio(d.email);
+    if (espera) {
+      const min = Math.ceil(espera / 60_000);
+      throw new ErroApp(429, "tentativas", `Muitas tentativas para este e-mail. Tente de novo em ${min} minuto${min > 1 ? "s" : ""}.`);
+    }
     const u = await db.user.findUnique({ where: { email: d.email } });
     // Confere um hash mesmo quando o e-mail não existe, para não revelar contas pelo tempo de resposta.
     const ok = await conferirSenha(d.senha, u?.passwordHash ?? HASH_FICTICIO);
-    if (!u || !ok) throw new ErroApp(401, "credenciais", "E-mail ou senha incorretos.");
+    if (!u || !ok) {
+      tentativas.falha(d.email);
+      throw new ErroApp(401, "credenciais", "E-mail ou senha incorretos.");
+    }
+    tentativas.sucesso(d.email);
     await iniciarSessao(app, reply, req, u.id);
     return montarSessao(app.ctx, u);
   });
@@ -61,7 +72,7 @@ export async function rotasAuth(app: FastifyInstance) {
 
   app.get("/conta/exportar", async (req, reply) => {
     const u = exigirLogin(req);
-    const [perfil, evidencias, vagas, tarefas, candidaturas, historias, conversas, vagasEmpresa, desafios] = await Promise.all([
+    const [perfil, evidencias, vagas, tarefas, candidaturas, historias, conversas, vagasEmpresa, desafios, usoIA] = await Promise.all([
       db.candidateProfile.findUnique({ where: { userId: u.id } }),
       db.evidence.findMany({ where: { userId: u.id } }),
       db.job.findMany({ where: { userId: u.id }, include: { requisitos: true } }),
@@ -71,6 +82,13 @@ export async function rotasAuth(app: FastifyInstance) {
       db.conversation.findMany({ where: { userId: u.id }, include: { mensagens: true } }),
       db.companyJob.findMany({ where: { companyId: u.id }, include: { requisitos: true } }),
       db.challenge.findMany({ where: { companyId: u.id }, include: { entregas: true } }),
+      // Só metadados: a DECIFRA não guarda o conteúdo enviado à IA.
+      db.aiInteraction.findMany({
+        where: { userId: u.id },
+        select: { tarefa: true, nivel: true, provedor: true, modelo: true, status: true, createdAt: true },
+        orderBy: { createdAt: "desc" },
+        take: 1000,
+      }),
     ]);
     const dados = {
       exportadoEm: new Date().toISOString(),
@@ -84,6 +102,7 @@ export async function rotasAuth(app: FastifyInstance) {
       conversas,
       vagasEmpresa,
       desafios,
+      usoIA,
     };
     reply.header("content-disposition", 'attachment; filename="decifra-meus-dados.json"');
     return dados;

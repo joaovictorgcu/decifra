@@ -21,14 +21,15 @@ npm start
 | `WEB_DIST` | `../web/dist` | Caminho do build do frontend, relativo a `apps/api` |
 | `DATABASE_URL` | `postgresql://...` | Recomendado PostgreSQL (ver [MODELO_DE_DADOS.md](MODELO_DE_DADOS.md)) |
 | `TRUST_PROXY` | `1` | Número de proxies na frente da API |
-| `AI_PROVIDER` e chave | `anthropic` + `ANTHROPIC_API_KEY` | Guarde a chave no cofre de segredos da plataforma, nunca no repositório |
+| `APP_TZ` | `America/Sao_Paulo` | Fuso dos prazos e das cotas diárias; não depende do fuso do servidor (que costuma ser UTC) |
+| Chaves de IA (opcional) | `GROQ_API_KEY`, `GEMINI_API_KEY`... | Guarde no cofre de segredos da plataforma, nunca no repositório. Sem chave, o produto roda pelo motor de regras (ver [IA.md](IA.md)) |
 
 ## Checklist
 
 - [ ] HTTPS terminado no proxy/plataforma.
 - [ ] `APP_ORIGIN` igual ao domínio público.
 - [ ] Banco PostgreSQL com backup automático.
-- [ ] Rotina diária `npm run admin -- limpar-sessoes`.
+- [ ] Sessões expiradas são removidas automaticamente a cada hora (o comando `npm run admin -- limpar-sessoes` continua disponível).
 - [ ] Monitorar `npm run admin -- uso-ia` e definir alerta de gasto no painel do provedor de IA.
 - [ ] Política de privacidade informando o uso de provedores de IA.
 - [ ] Mais de uma instância? Configure um armazenamento compartilhado para o rate limit (o padrão é em memória, por instância).

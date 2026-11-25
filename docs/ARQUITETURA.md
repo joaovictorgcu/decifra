@@ -51,6 +51,15 @@ Em produção, um único processo Node serve a API e o build estático do fronte
 - Perfil público é opcional e privado por padrão; a busca de empresas só vê perfis publicados e nunca expõe e-mail.
 - Mentor: limite diário de mensagens por plano (configurável).
 
+### Datas e fuso horário
+
+Prazos, "hoje" e a virada das cotas (Raio-X por mês, Mentor e IA por dia) seguem `APP_TZ` (padrão `America/Sao_Paulo`), e não o fuso do servidor. Sem isso, num servidor em UTC, um prazo "de hoje" passaria a ser recusado às 21h de Brasília. Implementação em `src/lib/datas.ts`, com testes inclusive de horário de verão.
+
+### Qualidade de código
+
+- `npm run lint`: ESLint com typescript-eslint e regras de hooks do React (zero avisos tolerados no CI).
+- `npm run typecheck`, `npm test` (API e frontend) e `npm run test:e2e`.
+
 ### Tratamento de erros e logs
 
 - Erros de negócio respondem `{ erro, codigo, campo? }` com status adequado (400, 401, 402 para plano, 403, 404, 409, 422, 429, 503).
@@ -61,7 +70,7 @@ Em produção, um único processo Node serve a API e o build estático do fronte
 
 - `src/api/cliente.ts`: `fetch` com cabeçalho anti-CSRF, erros tipados (`ErroRequisicao`), envio de arquivo e leitor de SSE do Mentor.
 - `src/api/consultas.ts`: hooks de consulta (TanStack Query). Mutações revalidam os dados, porque uma evidência nova muda Raio-X, radar e sugestões.
-- `src/components/`: `Casca` (menu lateral/barra inferior), `ui.tsx` (campos com erro acessível, botões com carregamento, estados vazios/erro/carregando, etiquetas), `Confirmar` (diálogo nativo), `Markdown` (renderização segura das respostas da IA, sem `innerHTML`).
+- `src/components/`: `BarreiraErro` (erro de renderização não deixa a tela em branco), `Casca` (menu lateral/barra inferior), `ui.tsx` (campos com erro acessível, botões com carregamento, estados vazios/erro/carregando, etiquetas), `Confirmar` (diálogo nativo), `Markdown` (renderização segura das respostas da IA, sem `innerHTML`).
 - `src/pages/`: uma página por tela; rotas carregadas sob demanda (code splitting).
 - Rotas protegidas por papel; candidato sem diagnóstico é levado ao diagnóstico.
 
@@ -74,7 +83,7 @@ Em produção, um único processo Node serve a API e o build estático do fronte
 | CSRF | Vale para qualquer caminho (o roteador decodifica `/%61pi/...`). Escrita exige o cabeçalho `x-decifra` (força preflight, nunca liberado a outras origens) e Origin igual a `APP_ORIGIN` |
 | XSS | React escapa tudo; respostas da IA renderizadas sem HTML; links de evidência aceitos só com `http(s)://`; CSP restritiva |
 | Acesso indevido (IDOR) | Toda consulta filtra pelo dono; testes cobrem acesso cruzado entre usuários e papéis |
-| Força bruta / abuso | Rate limit global (300/min) e por rota (login 10/min, IA 5–15/min); `TRUST_PROXY` por número de saltos (X-Forwarded-For forjado não burla o limite) |
+| Força bruta / abuso | Login: 10 tentativas/min por IP e bloqueio de 15 min por e-mail após 5 senhas erradas (vale para ataques distribuídos em vários IPs). Rate limit global (300/min) e por rota (IA 5–15/min); `TRUST_PROXY` por número de saltos (X-Forwarded-For forjado não burla o limite) |
 | Custo de IA | Teto diário de chamadas por usuário (`AI_LIMITE_DIARIO`, acima dele usa regras); limite diário do Mentor por plano |
 | Upload malicioso | Até 5 MB, 1 arquivo; tipo conferido pelo conteúdo (`%PDF-`); nada é gravado em disco |
 | Prompt injection | Dados do usuário (e textos de empresas) delimitados por marcações e tratados como dado; saída validada por schema e por guardas; a IA só pode apontar evidências que existem e pertencem à pessoa; links importados precisam existir no documento. Testado com instrução maliciosa real em vaga |
@@ -82,7 +91,7 @@ Em produção, um único processo Node serve a API e o build estático do fronte
 | Chaves de IA | Só no backend; nunca em respostas HTTP, no navegador ou nos logs (o log mostra só provedores e rotas) |
 | Redirecionamento aberto | `?volta=` aceita só caminhos internos |
 | Segredos | Só em variáveis de ambiente; `.env` no `.gitignore`; `.env.example` sem valores |
-| LGPD | Exportação de todos os dados e exclusão de conta em cascata |
+| LGPD | Exportação de todos os dados (inclui o histórico de uso da IA, só metadados) e exclusão de conta em cascata |
 
 Uma revisão de segurança independente foi feita durante o desenvolvimento; os achados corrigidos têm testes de regressão em `apps/api/test/api.test.ts`. Pontos aceitos conscientemente estão em [PROXIMOS_PASSOS.md](PROXIMOS_PASSOS.md).
 

@@ -20,6 +20,18 @@ const schema = z.object({
   TRUST_PROXY: z.coerce.number().int().min(0).max(5).default(0),
   /** "off" desliga o limite de requisições (apenas para testes automatizados). */
   RATE_LIMIT: z.enum(["on", "off"]).default("on"),
+  /** Fuso das datas do produto: prazos, "hoje" e a virada das cotas diárias e mensais. */
+  APP_TZ: z
+    .string()
+    .default("America/Sao_Paulo")
+    .refine((tz) => {
+      try {
+        new Intl.DateTimeFormat("en-CA", { timeZone: tz });
+        return true;
+      } catch {
+        return false;
+      }
+    }, "Fuso horário inválido (use um nome IANA, ex.: America/Sao_Paulo)."),
   // A configuração de IA é validada em src/ai/config.ts.
 });
 
