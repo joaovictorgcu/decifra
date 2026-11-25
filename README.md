@@ -6,6 +6,8 @@ A DECIFRA é uma plataforma para **adultos em transição de carreira para tecno
 
 Este repositório transforma o protótipo HTML original ([`prototype/DECIFRA.html`](prototype/DECIFRA.html)) em uma aplicação completa: frontend React, API Node.js, banco de dados, autenticação e uma camada de Inteligência Artificial multi-provedor.
 
+**No ar:** <https://decifra-ten.vercel.app> · página para os avaliadores: <https://decifra-ten.vercel.app/projeto>
+
 ## Funcionalidades
 
 **Candidato**

@@ -26,6 +26,7 @@ Um único projeto na Vercel serve a interface (arquivos estáticos) e a API (uma
 - **Migrações** (`prisma migrate deploy`) só nos deploys de **produção**; previews nunca alteram o banco.
 - **PostgreSQL em serverless**: 1 conexão por instância, SSL ligado (`PG_SSL=require`; `verify` com `PG_SSL_CA` para validar o certificado), e parâmetros que são do Prisma/Supabase (`pgbouncer`, `sslmode`) removidos antes de chegar ao driver.
 - **Limites da plataforma**: upload de até 4 MB (a Vercel aceita 4,5 MB por requisição); o streaming do Mentor manda um "batimento" a cada 15 s e a função tem até 300 s (plano Hobby).
+- **Região da função**: `pdx1` (Oregon) no `vercel.json`, ao lado de um Supabase em `us-west-2`. Se o seu projeto do Supabase estiver em outra região, troque para a mais próxima (ex.: `gru1` para `sa-east-1`), senão cada consulta atravessa o continente.
 
 ### Limites dos planos gratuitos
 
