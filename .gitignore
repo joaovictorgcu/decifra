@@ -20,3 +20,8 @@ apps/api/generated/
 apps/api/*.db
 apps/api/*.db-journal
 apps/api/.pg-teste/
+
+# Segredos de produção (lidos por scripts/vercel-env.mjs; nunca versionar)
+.env.producao
+.vercel
+!.env.producao.exemplo

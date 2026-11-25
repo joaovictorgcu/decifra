@@ -204,8 +204,13 @@ export async function rotasMentor(app: FastifyInstance) {
       if (aberto) res.write(`event: ${evento}\ndata: ${JSON.stringify(dados)}\n\n`);
     };
     const cancelar = new AbortController();
+    // Comentário SSE periódico: proxies e plataformas serverless fecham conexões ociosas.
+    const batimento = setInterval(() => {
+      if (aberto) res.write(": ping\n\n");
+    }, 15_000);
     res.on("close", () => {
       aberto = false;
+      clearInterval(batimento);
       cancelar.abort();
     });
 
@@ -269,6 +274,7 @@ export async function rotasMentor(app: FastifyInstance) {
         enviar("erro", { erro: parcial.trim() ? `A resposta foi interrompida. ${r.erro}` : r.erro, codigo: r.codigo });
       }
     } finally {
+      clearInterval(batimento);
       if (aberto) res.end();
     }
   });

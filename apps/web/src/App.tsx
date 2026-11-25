@@ -6,6 +6,7 @@ import { Carregando } from "./components/ui";
 import { useSessao } from "./lib/sessao";
 import { Landing } from "./pages/Landing";
 import { Entrar } from "./pages/Entrar";
+const Projeto = lazy(() => import("./pages/Projeto").then((m) => ({ default: m.Projeto })));
 const Planos = lazy(() => import("./pages/Planos").then((m) => ({ default: m.Planos })));
 const PerfilPublicoPagina = lazy(() => import("./pages/PerfilPublico").then((m) => ({ default: m.PerfilPublicoPagina })));
 const Diagnostico = lazy(() => import("./pages/Diagnostico").then((m) => ({ default: m.Diagnostico })));
@@ -32,6 +33,7 @@ const TITULOS: Record<string, string> = {
   "/": "DECIFRA",
   "/entrar": "Entrar · DECIFRA",
   "/planos": "Planos · DECIFRA",
+  "/projeto": "Sobre o projeto · DECIFRA",
   "/diagnostico": "Diagnóstico · DECIFRA",
   "/inicio": "Início · DECIFRA",
   "/raio-x": "Raio-X da Vaga · DECIFRA",
@@ -79,6 +81,7 @@ export function App() {
         <Route path="/" element={<Landing />} />
         <Route path="/entrar" element={<Entrar />} />
         <Route path="/planos" element={<Planos />} />
+        <Route path="/projeto" element={<Projeto />} />
         <Route path="/p/:slug" element={<PerfilPublicoPagina />} />
         <Route path="/diagnostico" element={<Protegida papel="candidato" semCasca semDiagnostico><Diagnostico /></Protegida>} />
         <Route path="/inicio" element={C(<Inicio />)} />

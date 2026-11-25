@@ -32,12 +32,39 @@ const schema = z.object({
         return false;
       }
     }, "Fuso horário inválido (use um nome IANA, ex.: America/Sao_Paulo)."),
+  /** Tamanho máximo de arquivo enviado (MB). Padrão 4: na Vercel, o corpo da requisição é limitado a 4,5 MB. */
+  UPLOAD_MAX_MB: z.coerce.number().min(1).max(20).optional(),
   // A configuração de IA é validada em src/ai/config.ts.
 });
 
-export type Env = z.infer<typeof schema> & { cookieSecure: boolean; isProd: boolean };
+export type Env = z.infer<typeof schema> & {
+  cookieSecure: boolean;
+  isProd: boolean;
+  /** Rodando na Vercel (variável VERCEL=1 definida pela plataforma). */
+  naVercel: boolean;
+  /** Origens aceitas além de APP_ORIGIN (domínios de preview da Vercel). */
+  origensExtras: string[];
+  uploadMaxBytes: number;
+};
 
-export function carregarEnv(fonte: NodeJS.ProcessEnv = process.env): Env {
+/**
+ * Na Vercel, aplica padrões seguros sem exigir configuração: produção, um proxy
+ * confiável (o da Vercel), cookie Secure (sempre HTTPS) e APP_ORIGIN igual ao
+ * domínio de produção do projeto. Tudo pode ser sobrescrito por variável.
+ */
+function padroesVercel(fonte: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  if (fonte.VERCEL !== "1") return fonte;
+  const prod = fonte.VERCEL_PROJECT_PRODUCTION_URL;
+  return {
+    NODE_ENV: "production",
+    TRUST_PROXY: "1",
+    ...(prod ? { APP_ORIGIN: `https://${prod}` } : {}),
+    ...fonte,
+  };
+}
+
+export function carregarEnv(fonteOriginal: NodeJS.ProcessEnv = process.env): Env {
+  const fonte = padroesVercel(fonteOriginal);
   const r = schema.safeParse(fonte);
   if (!r.success) {
     const msgs = r.error.issues.map((i) => `  - ${i.path.join(".")}: ${i.message}`).join("\n");
@@ -46,5 +73,8 @@ export function carregarEnv(fonte: NodeJS.ProcessEnv = process.env): Env {
   const e = r.data;
   const isProd = e.NODE_ENV === "production";
   const cookieSecure = e.COOKIE_SECURE ? e.COOKIE_SECURE === "true" : isProd;
-  return { ...e, cookieSecure, isProd };
+  const naVercel = fonte.VERCEL === "1";
+  const origensExtras = naVercel ? [fonte.VERCEL_URL, fonte.VERCEL_BRANCH_URL].filter((x): x is string => !!x).map((h) => `https://${h}`) : [];
+  const uploadMaxBytes = Math.floor((e.UPLOAD_MAX_MB ?? 4) * 1024 * 1024);
+  return { ...e, cookieSecure, isProd, naVercel, origensExtras, uploadMaxBytes };
 }

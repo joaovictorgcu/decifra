@@ -15,7 +15,7 @@ async function semViolacoesGraves(page: Page) {
 }
 
 test("páginas públicas: acessibilidade e responsividade", async ({ page }) => {
-  for (const url of ["/", "/entrar", "/planos", "/pagina-que-nao-existe"]) {
+  for (const url of ["/", "/projeto", "/entrar", "/planos", "/pagina-que-nao-existe"]) {
     await page.goto(url);
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     await semRolagemHorizontal(page);

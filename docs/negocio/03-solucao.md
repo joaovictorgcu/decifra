@@ -49,13 +49,13 @@ Exigências formais (tempo de experiência, diploma) nunca contam como falta de 
 | Banco | Prisma 7 + SQLite (desenvolvimento) / PostgreSQL (produção) | Zero configuração local; banco robusto em produção |
 | IA | Groq, Gemini, OpenRouter, Ollama (gratuitos); Anthropic e OpenAI opcionais | Custo de IA pode ser zero; fallback entre provedores e para regras |
 | Qualidade | 95 testes da API, 7 do frontend, 31 E2E em 3 tamanhos de tela, testes num PostgreSQL real, lint, CI | Funcionalidades verificadas, não só implementadas |
-| Implantação | Dockerfile + docker-compose (app + PostgreSQL) | Publicação em qualquer nuvem que rode contêiner |
+| Implantação | Vercel + Supabase (recomendado); Dockerfile + docker-compose como alternativa | Publicação simples a partir do GitHub |
 
 **Recursos mínimos para operar o piloto:**
 
 | Recurso | Mínimo | Custo estimado |
 |---|---|---|
-| Servidor | 1 instância pequena (1 vCPU, 1 GB) + PostgreSQL gerenciado pequeno | **[equipe]**: cotar no provedor escolhido; há planos gratuitos ou de baixo custo |
+| Hospedagem | Vercel (interface + API serverless) + Supabase (PostgreSQL), configuração pronta no repositório | R$ 0 nos planos gratuitos para o piloto (Vercel Hobby é para uso não comercial; o Supabase Free pausa após 1 semana sem uso). Para operação comercial: planos pagos **[equipe: cotar]** |
 | IA | Chave gratuita do Groq (e/ou Gemini); Ollama opcional | R$ 0 dentro dos limites gratuitos (Groq ~1.000 requisições/dia por modelo) |
 | Domínio e HTTPS | 1 domínio | **[equipe]** |
 | Pessoas | Produto/negócio, desenvolvimento, pesquisa/UX | Equipe do projeto |

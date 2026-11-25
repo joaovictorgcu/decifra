@@ -33,8 +33,8 @@ export function Importar() {
 
   function escolher(f: File | undefined) {
     if (!f) return;
-    if (f.size > 5 * 1024 * 1024) {
-      avisar("Arquivo maior que 5 MB.", "erro");
+    if (f.size > 4 * 1024 * 1024) {
+      avisar("Arquivo maior que 4 MB.", "erro");
       return;
     }
     setArquivo(f);
@@ -61,7 +61,7 @@ export function Importar() {
           }}
         >
           <label htmlFor="cv" style={{ fontWeight: 600, color: "var(--marinho)" }}>
-            Arquivo PDF ou TXT, até 5 MB
+            Arquivo PDF ou TXT, até 4 MB
           </label>
           <input id="cv" type="file" accept=".pdf,.txt,application/pdf,text/plain" onChange={(e) => escolher(e.target.files?.[0])} />
           <p className="apoio">

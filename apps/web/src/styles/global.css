@@ -270,3 +270,7 @@ a.aba { display: inline-flex; align-items: center; text-decoration: none; }
 .feedback-ok { font-size: .875rem; color: var(--cinza-texto); }
 .feedback.compacta { padding: 6px 0 0; border: 0; border-top: 1px solid var(--linha); border-radius: 0; font-size: .875rem; }
 .feedback.compacta .botao { min-height: 36px; padding: 4px 12px; }
+
+/* Página do projeto */
+.canvas { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); }
+.dif-linha { display: grid; gap: 4px; padding-block: 12px; border-top: 1px solid rgba(159,225,212,.3); }

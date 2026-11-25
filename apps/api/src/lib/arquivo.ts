@@ -14,7 +14,7 @@ export async function lerTextoEnviado(req: FastifyRequest): Promise<{ nome: stri
   const arq = await req.file();
   if (!arq) throw new ErroApp(400, "arquivo", "Envie um arquivo PDF ou TXT.");
   const buf = await arq.toBuffer();
-  if (arq.file.truncated) throw new ErroApp(413, "arquivo_grande", "Arquivo maior que 5 MB.");
+  if (arq.file.truncated) throw new ErroApp(413, "arquivo_grande", `Arquivo maior que ${Math.floor(req.server.ctx.env.uploadMaxBytes / 1048576)} MB.`);
   const nome = arq.filename.slice(0, 120);
   let texto: string;
 

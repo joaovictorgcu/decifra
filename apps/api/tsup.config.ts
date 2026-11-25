@@ -1,7 +1,7 @@
 import { defineConfig } from "tsup";
 
 export default defineConfig({
-  entry: ["src/server.ts", "src/scripts/admin.ts"],
+  entry: ["src/server.ts", "src/vercel.ts", "src/scripts/admin.ts"],
   format: ["esm"],
   target: "node20",
   platform: "node",

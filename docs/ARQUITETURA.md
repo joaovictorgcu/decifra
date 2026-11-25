@@ -85,7 +85,7 @@ Prazos, "hoje" e a virada das cotas (Raio-X por mês, Mentor e IA por dia) segue
 | Acesso indevido (IDOR) | Toda consulta filtra pelo dono; testes cobrem acesso cruzado entre usuários e papéis |
 | Força bruta / abuso | Login: 10 tentativas/min por IP e bloqueio de 15 min por e-mail após 5 senhas erradas (vale para ataques distribuídos em vários IPs). Rate limit global (300/min) e por rota (IA 5–15/min); `TRUST_PROXY` por número de saltos (X-Forwarded-For forjado não burla o limite) |
 | Custo de IA | Teto diário de chamadas por usuário (`AI_LIMITE_DIARIO`, acima dele usa regras); limite diário do Mentor por plano |
-| Upload malicioso | Até 5 MB, 1 arquivo; tipo conferido pelo conteúdo (`%PDF-`); nada é gravado em disco |
+| Upload malicioso | Até 4 MB (`UPLOAD_MAX_MB`; a Vercel limita o corpo a 4,5 MB), 1 arquivo; tipo conferido pelo conteúdo (`%PDF-`); nada é gravado em disco |
 | Prompt injection | Dados do usuário (e textos de empresas) delimitados por marcações e tratados como dado; saída validada por schema e por guardas; a IA só pode apontar evidências que existem e pertencem à pessoa; links importados precisam existir no documento. Testado com instrução maliciosa real em vaga |
 | Privacidade na IA | E-mail, telefone e CPF removidos antes do envio; tarefas sensíveis (Mentor, currículo) só em provedores que não treinam com os dados; política configurável (`AI_PRIVACIDADE`) |
 | Chaves de IA | Só no backend; nunca em respostas HTTP, no navegador ou nos logs (o log mostra só provedores e rotas) |

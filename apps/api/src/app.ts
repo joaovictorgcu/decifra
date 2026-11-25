@@ -82,7 +82,7 @@ export async function criarApp(ctx: Contexto): Promise<FastifyInstance> {
     allowList: env.RATE_LIMIT === "off" ? () => true : undefined,
     errorResponseBuilder: () => ({ statusCode: 429, erro: "Muitas requisições. Aguarde um instante e tente de novo.", codigo: "limite" }),
   });
-  await app.register(multipart, { limits: { fileSize: 5 * 1024 * 1024, files: 1, fields: 5 } });
+  await app.register(multipart, { limits: { fileSize: env.uploadMaxBytes, files: 1, fields: 5 } });
   await app.register(auth);
 
   /*
@@ -92,7 +92,7 @@ export async function criarApp(ctx: Contexto): Promise<FastifyInstance> {
    * Vale para qualquer caminho: o roteador decodifica a URL (ex.: /%61pi/...),
    * então filtrar por prefixo de req.url permitiria contornar a checagem.
    */
-  const origens = new Set([new URL(env.APP_ORIGIN).origin]);
+  const origens = new Set([new URL(env.APP_ORIGIN).origin, ...env.origensExtras]);
   app.addHook("onRequest", async (req) => {
     if (METODOS_SEGUROS.has(req.method)) return;
     const origem = req.headers.origin;
@@ -111,7 +111,9 @@ export async function criarApp(ctx: Contexto): Promise<FastifyInstance> {
     }
     const e = erro as { statusCode?: number; code?: string; message?: string };
     if (e.statusCode === 429) return reply.status(429).send({ erro: "Muitas requisições. Aguarde um instante e tente de novo.", codigo: "limite" });
-    if (e.code === "FST_REQ_FILE_TOO_LARGE") return reply.status(413).send({ erro: "Arquivo maior que 5 MB.", codigo: "arquivo_grande" });
+    if (e.code === "FST_REQ_FILE_TOO_LARGE") {
+      return reply.status(413).send({ erro: `Arquivo maior que ${Math.floor(env.uploadMaxBytes / 1048576)} MB.`, codigo: "arquivo_grande" });
+    }
     if (e.statusCode && e.statusCode >= 400 && e.statusCode < 500) {
       return reply.status(e.statusCode).send({ erro: "Requisição inválida.", codigo: e.code ?? "requisicao" });
     }

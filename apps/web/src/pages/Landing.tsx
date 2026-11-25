@@ -20,6 +20,10 @@ export function Landing() {
         <div className="miolo">
           <div className="topo-l">
             <Marca />
+            <div className="linha" style={{ gap: 8 }}>
+            <Link className="botao claro peq" to="/projeto">
+              Sobre o projeto
+            </Link>
             {destinoApp ? (
               <Link className="botao claro peq" to={destinoApp}>
                 Abrir o app
@@ -29,6 +33,7 @@ export function Landing() {
                 Entrar
               </Link>
             )}
+            </div>
           </div>
           <div className="heroi">
             <div className="pilha">

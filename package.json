@@ -5,7 +5,7 @@
   "description": "DECIFRA: plataforma de transição de carreira baseada em evidências, com IA.",
   "license": "UNLICENSED",
   "engines": {
-    "node": ">=20.19"
+    "node": "24.x"
   },
   "workspaces": [
     "packages/*",
@@ -22,7 +22,8 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "test:e2e": "playwright test",
-    "lint": "eslint . --max-warnings=0"
+    "lint": "eslint . --max-warnings=0",
+    "vercel-build": "npm run build -w @decifra/web && npm run vercel-build -w @decifra/api"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.14.1",

@@ -1,5 +1,7 @@
 # DECIFRA: Status Report 2
 
+> Versão para os avaliadores no site: página **`/projeto`** do app publicado (link "Sobre o projeto" na página inicial).
+
 Material de negócio organizado pelos critérios de avaliação. Cada seção liga as decisões às evidências: a pesquisa com 23 candidatos e 3 recrutadores, o MVP funcional e as avaliações reais.
 
 | Critério | Documento | Pergunta norteadora |

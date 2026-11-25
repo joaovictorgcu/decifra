@@ -13,7 +13,8 @@ const aqui = path.dirname(fileURLToPath(import.meta.url));
 // O Prisma 7 não lê .env sozinho; variáveis já definidas no ambiente têm prioridade.
 config({ path: path.resolve(aqui, "../../.env"), quiet: true });
 
-const url = process.env.DATABASE_URL ?? "file:./prisma/dev.db";
+// O CLI (migrate) usa DIRECT_URL quando existe: no Supabase, migrações não podem passar pelo pooler de transação (porta 6543).
+const url = process.env.DIRECT_URL ?? process.env.DATABASE_URL ?? "file:./prisma/dev.db";
 const postgres = /^postgres(ql)?:\/\//i.test(url);
 
 export default defineConfig({

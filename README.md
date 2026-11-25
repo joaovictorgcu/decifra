@@ -142,6 +142,10 @@ decifra/
 └── docs/                     # documentação
 ```
 
+## Publicar (Vercel + Supabase)
+
+Passo a passo em [docs/DEPLOY.md](docs/DEPLOY.md): crie o projeto no Supabase, preencha `.env.producao` (modelo em `.env.producao.exemplo`) e rode `npx vercel login`, `npx vercel link`, `node scripts/vercel-env.mjs` e `npx vercel --prod`.
+
 ## Rodando com Docker (PostgreSQL)
 
 ```bash
@@ -152,7 +156,7 @@ As chaves de IA (opcionais) vêm do seu `.env` ou do ambiente. O contêiner apli
 
 ## Documentação
 
-- **[Status Report 2: negócio, proposta de valor, solução, validação e plano de 12 meses](docs/negocio/README.md)**
+- **[Status Report 2: negócio, proposta de valor, solução, validação e plano de 12 meses](docs/negocio/README.md)**. Versão pública no próprio app, em `/projeto`.
 
 - [Análise do protótipo](docs/ANALISE_PROTOTIPO.md): telas, fluxos, o que era simulado e o que foi corrigido.
 - [Arquitetura](docs/ARQUITETURA.md): tecnologias, decisões, backend, frontend e segurança.
