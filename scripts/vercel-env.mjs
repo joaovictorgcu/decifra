@@ -41,7 +41,8 @@ if (process.argv.includes("--listar")) {
 const npx = process.platform === "win32" ? "npx.cmd" : "npx";
 for (const [nome, valor] of Object.entries(vars)) {
   for (const ambiente of ["production", "preview"]) {
-    execFileSync(npx, ["vercel", "env", "add", nome, ambiente, "--value", valor, "--force", "--yes"], { stdio: ["ignore", "ignore", "inherit"], shell: process.platform === "win32" });
+    // Valor pela entrada padrão: não aparece na linha de comando nem passa pelo shell (no cmd, "%" seria expandido).
+    execFileSync(npx, ["vercel", "env", "add", nome, ambiente, "--force", "--yes"], { input: valor, stdio: ["pipe", "ignore", "inherit"], shell: process.platform === "win32" });
   }
   console.log(`✓ ${nome}`);
 }

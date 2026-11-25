@@ -25,3 +25,4 @@ apps/api/.pg-teste/
 .env.producao
 .vercel
 !.env.producao.exemplo
+.env.local
