@@ -37,11 +37,21 @@ export interface Perfil {
   slug: string;
 }
 
+/** O que a interface precisa saber sobre a IA (sem detalhes técnicos nem chaves). */
+export interface StatusIA {
+  ativa: boolean;
+  /** Nomes amigáveis dos provedores ativos, ex.: ["Groq", "Google Gemini"]. */
+  provedores: string[];
+  /** Há provedor permitido (inclusive pela política de privacidade) para o Mentor e para a importação de currículo? */
+  mentor: boolean;
+  importacao: boolean;
+}
+
 export interface Sessao {
   usuario: Usuario;
   perfil: Perfil | null;
   uso: { raioMes: number; limiteRaio: number | null; mentorHoje: number; limiteMentor: number };
-  ia: { ativa: boolean; provedor: string };
+  ia: StatusIA;
 }
 
 export interface Evidencia {
@@ -98,6 +108,8 @@ export interface VagaResumo {
   empresa: string;
   decisao: Decisao;
   fonte: Fonte;
+  /** Provedor e modelo de IA, quando fonte = "ia" (ex.: "Groq · gpt-oss-120b"). */
+  ia: string | null;
   vagaEmpresaId: string | null;
   criadaEm: string;
 }
@@ -156,6 +168,7 @@ export interface Historia {
   acao: string;
   resultado: string;
   fonte: Fonte;
+  ia: string | null;
 }
 
 export interface Feedback {
@@ -163,6 +176,13 @@ export interface Feedback {
   objetividade: string;
   sugestoes: string[];
   fonte: Fonte;
+  ia: string | null;
+}
+
+export interface ResultadoTraducao {
+  itens: Traducao[];
+  fonte: Fonte;
+  ia: string | null;
 }
 
 export interface VagaEmpresa {
@@ -225,6 +245,10 @@ export interface MensagemMentor {
   id: string;
   papel: "user" | "assistant";
   conteudo: string;
+  /** Quem gerou a resposta (ex.: "Groq · gpt-oss-120b"). */
+  ia: string | null;
+  /** A pessoa interrompeu a geração: o texto está incompleto. */
+  interrompida: boolean;
   criadaEm: string;
 }
 

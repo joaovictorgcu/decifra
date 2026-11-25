@@ -1,188 +1,242 @@
 import type { z } from "zod";
-import type { Env } from "../config/env";
+import { CATALOGO } from "./catalogo";
+import type { ConfigIA } from "./config";
+import { Disjuntor } from "./disjuntor";
 import { ProvedorAnthropic } from "./providers/anthropic";
 import { ProvedorMock } from "./providers/mock";
-import { ProvedorOpenAI } from "./providers/openai";
-import { ErroIA, type Esforco, type MensagemIA, type ProvedorIA, type TarefaIA } from "./tipos";
-
-/**
- * Perfil de cada tarefa de IA. "rapido" usa AI_MODEL_FAST (se definido),
- * "principal" usa AI_MODEL. Cada tarefa pode ser sobrescrita por
- * AI_MODEL_<TAREFA> (ex.: AI_MODEL_MENTOR), sem mudar código.
- */
-const PERFIS: Record<TarefaIA, { nivel: "rapido" | "principal"; esforco: Esforco; maxTokens: number }> = {
-  extrair_requisitos: { nivel: "rapido", esforco: "low", maxTokens: 16000 },
-  traduzir: { nivel: "rapido", esforco: "low", maxTokens: 16000 },
-  feedback: { nivel: "rapido", esforco: "low", maxTokens: 16000 },
-  historia: { nivel: "principal", esforco: "medium", maxTokens: 16000 },
-  importar_cv: { nivel: "principal", esforco: "medium", maxTokens: 16000 },
-  mentor: { nivel: "principal", esforco: "medium", maxTokens: 16000 },
-};
-
-const MODELO_PADRAO: Partial<Record<Env["AI_PROVIDER"], string>> = {
-  anthropic: "claude-opus-5-5",
-  mock: "mock",
-};
+import { ProvedorCompativel } from "./providers/openai-compativel";
+import { classificar, PERFIS, permitido, planejar, type Sinais } from "./roteador";
+import { ErroIA, type IdProvedor, type MensagemIA, type MetaIA, type Nivel, type ProvedorIA, type TarefaIA, type UsoIA } from "./tipos";
 
 export interface RegistroInteracao {
   userId: string | null;
   tarefa: TarefaIA;
+  nivel: Nivel;
   provedor: string;
   modelo: string;
-  status: "ok" | "invalido" | "erro" | "recusa";
+  tentativa: number;
+  status: "ok" | "invalido" | "erro" | "recusa" | "limite" | "cancelado" | "descartado";
   latenciaMs: number;
   tokensEntrada: number;
   tokensSaida: number;
   erro: string;
 }
 
-export type Registrador = (r: RegistroInteracao) => Promise<void> | void;
+export interface Dependencias {
+  registrar: (r: RegistroInteracao) => Promise<void> | void;
+  /** Uso de IA do usuário hoje: total de chamadas e quantas foram de nível complexo. */
+  usoHoje?: (userId: string) => Promise<{ total: number; complexas: number }>;
+  agora?: () => number;
+  disjuntor?: Disjuntor;
+}
 
+export interface Resultado<T> {
+  dados: T;
+  meta: MetaIA;
+}
+
+/**
+ * Ponto único de acesso à IA. Recebe a tarefa e sinais objetivos, escolhe o
+ * nível e a ordem de provedores (roteador.ts), tenta cada um respeitando
+ * privacidade, disjuntor, cotas e limite de tentativas, e registra tudo.
+ * As rotas HTTP não sabem qual provedor existe.
+ */
 export class ServicoIA {
+  private readonly disjuntor: Disjuntor;
+  private readonly agora: () => number;
+
   constructor(
-    private readonly provedor: ProvedorIA | null,
-    private readonly env: Pick<Env, "AI_MODEL" | "AI_MODEL_FAST" | "AI_TIMEOUT_MS" | "AI_PROVIDER">,
-    private readonly registrar: Registrador,
-    private readonly modelosPorTarefa: Partial<Record<TarefaIA, string>> = {},
-    /** Cota por usuário: devolve false quando a pessoa já passou do teto diário. */
-    private readonly dentroDaCota: (userId: string) => Promise<boolean> = async () => true,
-  ) {}
+    readonly cfg: ConfigIA,
+    private readonly provedores: Map<IdProvedor, ProvedorIA>,
+    private readonly deps: Dependencias,
+  ) {
+    this.disjuntor = deps.disjuntor ?? new Disjuntor();
+    this.agora = deps.agora ?? Date.now;
+  }
 
   get ativa(): boolean {
-    return this.provedor !== null;
+    return !this.cfg.desligada && this.provedores.size > 0;
   }
 
-  get nomeProvedor(): string {
-    return this.provedor?.nome ?? "none";
+  /** Para a interface: a tarefa tem algum provedor configurado e permitido pela política de privacidade? */
+  disponivelPara(tarefa: TarefaIA): boolean {
+    if (!this.ativa) return false;
+    const sens = PERFIS[tarefa].sensibilidade;
+    const rotas = this.cfg.rotasTarefa[tarefa] ?? [...this.cfg.rotas.simples, ...this.cfg.rotas.intermediaria, ...this.cfg.rotas.complexa];
+    return rotas.some((a) => this.provedores.has(a.provedor) && permitido(this.cfg, a.provedor, sens));
   }
 
-  modeloDe(tarefa: TarefaIA): string {
-    const perfil = PERFIS[tarefa];
-    const principal = this.env.AI_MODEL ?? MODELO_PADRAO[this.env.AI_PROVIDER] ?? "";
-    const base = perfil.nivel === "rapido" ? (this.env.AI_MODEL_FAST ?? principal) : principal;
-    return this.modelosPorTarefa[tarefa] ?? base;
+  /** Nomes amigáveis dos provedores ativos. */
+  get rotulos(): string[] {
+    return [...this.provedores.keys()].map((id) => CATALOGO[id].rotulo);
   }
 
   async gerarJSON<T>(
     tarefa: TarefaIA,
     userId: string | null,
     p: { sistema: string; mensagem: string; schema: z.ZodType<T>; nomeSchema: string },
-  ): Promise<T> {
-    const provedor = this.exigir();
-    await this.checarCota(userId);
-    const perfil = PERFIS[tarefa];
-    const modelo = this.modeloDe(tarefa);
-    return this.medir(tarefa, userId, modelo, async (signal) => {
-      const r = await provedor.gerarJSON({ ...p, modelo, esforco: perfil.esforco, maxTokens: perfil.maxTokens, signal });
+    sinais: Sinais = {},
+    sinalExterno?: AbortSignal,
+  ): Promise<Resultado<T>> {
+    return this.executar(tarefa, userId, sinais, sinalExterno, async (prov, modelo, nivel, signal) => {
+      const perfil = PERFIS[tarefa];
+      const r = await prov.gerarJSON({ ...p, modelo, esforco: perfil.esforco[nivel], maxTokens: perfil.maxTokens, signal });
       return { valor: r.dados, uso: r.uso, modelo: r.modelo };
     });
   }
 
+  /**
+   * Conversa em streaming. Se um provedor falhar antes do primeiro trecho, tenta
+   * o próximo; depois que o texto começou a chegar, não troca de provedor (para
+   * não misturar respostas) e a falha é informada como parcial.
+   */
   async conversar(
     tarefa: TarefaIA,
     userId: string | null,
     p: { sistema: string; mensagens: MensagemIA[] },
-    aoReceber: (trecho: string) => void,
+    ev: { aoReceber: (trecho: string) => void; aoIniciar?: (meta: MetaIA) => void },
+    sinais: Sinais = {},
     sinalExterno?: AbortSignal,
-  ): Promise<string> {
-    const provedor = this.exigir();
-    await this.checarCota(userId);
-    const perfil = PERFIS[tarefa];
-    const modelo = this.modeloDe(tarefa);
-    return this.medir(
-      tarefa,
-      userId,
-      modelo,
-      async (signal) => {
-        const r = await provedor.conversar({ ...p, modelo, esforco: perfil.esforco, maxTokens: perfil.maxTokens, signal }, aoReceber);
+  ): Promise<Resultado<string>> {
+    return this.executar(tarefa, userId, sinais, sinalExterno, async (prov, modelo, nivel, signal, meta) => {
+      const perfil = PERFIS[tarefa];
+      let iniciou = false;
+      try {
+        const r = await prov.conversar({ ...p, modelo, esforco: perfil.esforco[nivel], maxTokens: perfil.maxTokens, signal }, (t) => {
+          if (!iniciou) {
+            iniciou = true;
+            ev.aoIniciar?.(meta);
+          }
+          ev.aoReceber(t);
+        });
         return { valor: r.dados, uso: r.uso, modelo: r.modelo };
-      },
-      sinalExterno,
-    );
+      } catch (e) {
+        if (iniciou) {
+          const x = e instanceof ErroIA ? e : new ErroIA("falha", "Falha no stream", { causa: e });
+          throw new ErroIA(x.motivo, x.message, { causa: x.causa, aposMs: x.aposMs, parcial: true });
+        }
+        throw e;
+      }
+    });
   }
 
-  private async checarCota(userId: string | null) {
-    if (userId && !(await this.dentroDaCota(userId))) throw new ErroIA("limite", "Teto diário de uso da IA atingido.");
-  }
-
-  private exigir(): ProvedorIA {
-    if (!this.provedor) throw new ErroIA("desativada", "A IA não está configurada neste ambiente.");
-    return this.provedor;
-  }
-
-  private async medir<T>(
+  private async executar<R>(
     tarefa: TarefaIA,
     userId: string | null,
-    modelo: string,
-    fn: (signal: AbortSignal) => Promise<{ valor: T; uso: { entrada: number; saida: number }; modelo: string }>,
-    sinalExterno?: AbortSignal,
-  ): Promise<T> {
-    const inicio = Date.now();
-    const sinais = [AbortSignal.timeout(this.env.AI_TIMEOUT_MS)];
-    if (sinalExterno) sinais.push(sinalExterno);
-    const signal = AbortSignal.any(sinais);
-    try {
-      const r = await fn(signal);
-      await this.log({ userId, tarefa, modelo: r.modelo, status: "ok", inicio, uso: r.uso, erro: "" });
-      return r.valor;
-    } catch (e) {
-      const erro = e instanceof ErroIA ? e : new ErroIA("falha", e instanceof Error ? e.message : "Falha na IA", e);
-      const status = erro.motivo === "recusa" ? "recusa" : erro.motivo === "invalido" ? "invalido" : "erro";
-      await this.log({ userId, tarefa, modelo, status, inicio, uso: { entrada: 0, saida: 0 }, erro: `${erro.motivo}: ${erro.message}` });
-      throw erro;
+    sinais: Sinais,
+    sinalExterno: AbortSignal | undefined,
+    fn: (prov: ProvedorIA, modelo: string, nivel: Nivel, signal: AbortSignal, meta: MetaIA) => Promise<{ valor: R; uso: UsoIA; modelo: string }>,
+  ): Promise<Resultado<R>> {
+    if (!this.ativa) throw new ErroIA("desativada", "Nenhum provedor de IA configurado.");
+    let nivel = classificar(tarefa, sinais);
+
+    // Cotas por usuário: teto diário geral e teto de chamadas complexas (que usam modelos mais caros).
+    if (userId && this.deps.usoHoje) {
+      const uso = await this.deps.usoHoje(userId);
+      if (uso.total >= this.cfg.limiteDiario) throw new ErroIA("cota", "Limite diário de uso da IA atingido.");
+      if (nivel === "complexa" && uso.complexas >= this.cfg.limiteDiarioComplexa) nivel = "intermediaria";
     }
+
+    const plano = planejar(this.cfg, tarefa, nivel, this.disjuntor, this.agora());
+    if (!plano.alvos.length) {
+      if (plano.emPausa.length) {
+        const ate = Math.min(...plano.emPausa.map((x) => x.ate));
+        throw new ErroIA("indisponivel", "Os provedores de IA estão temporariamente indisponíveis.", { aposMs: ate - this.agora() });
+      }
+      throw new ErroIA(plano.vetadosPrivacidade.length ? "privacidade" : "desativada", "Nenhum provedor permitido para esta tarefa.");
+    }
+
+    let ultimo: ErroIA | null = null;
+    let soLimite = true;
+    let menorEspera: number | undefined;
+    const tentativas = plano.alvos.slice(0, this.cfg.maxTentativas);
+    for (const [i, alvo] of tentativas.entries()) {
+      const prov = this.provedores.get(alvo.provedor)!;
+      const meta: MetaIA = { provedor: alvo.provedor, rotulo: CATALOGO[alvo.provedor].rotulo, modelo: alvo.modelo, nivel };
+      const inicio = this.agora();
+      const sinais_ = [AbortSignal.timeout(this.cfg.timeoutMs)];
+      if (sinalExterno) sinais_.push(sinalExterno);
+      const signal = AbortSignal.any(sinais_);
+      try {
+        if (sinalExterno?.aborted) throw new ErroIA("cancelado", "Cancelado.");
+        const r = await fn(prov, alvo.modelo, nivel, signal, meta);
+        this.disjuntor.sucesso(alvo.provedor);
+        const modelo = r.modelo || alvo.modelo;
+        await this.log({ userId, tarefa, nivel, provedor: alvo.provedor, modelo, tentativa: i + 1, status: "ok", inicio, uso: r.uso, erro: "" });
+        return { dados: r.valor, meta: { ...meta, modelo } };
+      } catch (e) {
+        let erro = e instanceof ErroIA ? e : new ErroIA("falha", e instanceof Error ? e.message : "Falha na IA", { causa: e });
+        if (sinalExterno?.aborted) erro = new ErroIA("cancelado", "Cancelado pela pessoa.", { parcial: erro.parcial });
+        const status: RegistroInteracao["status"] =
+          erro.motivo === "cancelado" ? "cancelado" : erro.motivo === "recusa" ? "recusa" : erro.motivo === "invalido" ? "invalido" : erro.motivo === "limite" ? "limite" : "erro";
+        await this.log({ userId, tarefa, nivel, provedor: alvo.provedor, modelo: alvo.modelo, tentativa: i + 1, status, inicio, uso: { entrada: 0, saida: 0 }, erro: `${erro.motivo}: ${erro.message}` });
+        if (erro.motivo === "cancelado") throw erro;
+        this.disjuntor.falha(alvo.provedor, erro.motivo, this.agora(), erro.aposMs);
+        // Depois de parte da resposta enviada, não dá para trocar de provedor sem confundir quem lê.
+        if (erro.parcial) throw erro;
+        ultimo = erro;
+        if (erro.motivo !== "limite") soLimite = false;
+        else if (erro.aposMs !== undefined) menorEspera = Math.min(menorEspera ?? Infinity, erro.aposMs);
+      }
+    }
+    if (ultimo && soLimite) throw new ErroIA("limite", "Os provedores de IA atingiram o limite de uso.", { aposMs: menorEspera ?? 60_000 });
+    if (ultimo?.motivo === "invalido" || ultimo?.motivo === "recusa") throw ultimo;
+    throw new ErroIA("indisponivel", "Os provedores de IA não responderam.", { causa: ultimo });
   }
 
   private async log(r: {
     userId: string | null;
     tarefa: TarefaIA;
+    nivel: Nivel;
+    provedor: string;
     modelo: string;
+    tentativa: number;
     status: RegistroInteracao["status"];
     inicio: number;
-    uso: { entrada: number; saida: number };
+    uso: UsoIA;
     erro: string;
   }) {
     try {
-      await this.registrar({
+      await this.deps.registrar({
         userId: r.userId,
         tarefa: r.tarefa,
-        provedor: this.nomeProvedor,
+        nivel: r.nivel,
+        provedor: r.provedor,
         modelo: r.modelo,
+        tentativa: r.tentativa,
         status: r.status,
-        latenciaMs: Date.now() - r.inicio,
+        latenciaMs: Math.max(0, this.agora() - r.inicio),
         tokensEntrada: r.uso.entrada,
         tokensSaida: r.uso.saida,
-        erro: r.erro.slice(0, 500),
+        erro: r.erro.slice(0, 300),
       });
     } catch {
       /* O registro nunca deve derrubar a resposta ao usuário. */
     }
   }
-}
 
-/** Cria o provedor configurado no ambiente (ou nenhum, quando AI_PROVIDER=none). */
-export function criarProvedor(env: Env): ProvedorIA | null {
-  switch (env.AI_PROVIDER) {
-    case "anthropic":
-      return new ProvedorAnthropic(env.ANTHROPIC_API_KEY, env.ANTHROPIC_FALLBACKS);
-    case "openai":
-      return new ProvedorOpenAI("openai", { apiKey: env.OPENAI_API_KEY, baseURL: env.OPENAI_BASE_URL });
-    case "openai-compatible":
-      return new ProvedorOpenAI("openai-compatible", { apiKey: env.OPENAI_API_KEY, baseURL: env.OPENAI_BASE_URL });
-    case "mock":
-      return new ProvedorMock();
-    default:
-      return null;
+  /**
+   * Registra que uma resposta válida no formato foi descartada pela validação de
+   * domínio ou pelos princípios (ex.: prometeu contratação). Ajuda a medir a
+   * qualidade de cada modelo.
+   */
+  async registrarDescarte(tarefa: TarefaIA, userId: string | null, meta: MetaIA, motivo: string) {
+    await this.log({ userId, tarefa, nivel: meta.nivel, provedor: meta.provedor, modelo: meta.modelo, tentativa: 0, status: "descartado", inicio: this.agora(), uso: { entrada: 0, saida: 0 }, erro: motivo });
+  }
+
+  /** Estado do disjuntor (sem dados sensíveis), para diagnóstico. */
+  estado() {
+    return this.disjuntor.estado(this.agora());
   }
 }
 
-/** Lê sobrescritas de modelo por tarefa (AI_MODEL_EXTRAIR_REQUISITOS, AI_MODEL_MENTOR...). */
-export function modelosPorTarefaDoAmbiente(fonte: NodeJS.ProcessEnv = process.env): Partial<Record<TarefaIA, string>> {
-  const tarefas: TarefaIA[] = ["extrair_requisitos", "traduzir", "historia", "feedback", "importar_cv", "mentor"];
-  const out: Partial<Record<TarefaIA, string>> = {};
-  for (const t of tarefas) {
-    const v = fonte[`AI_MODEL_${t.toUpperCase()}`];
-    if (v) out[t] = v;
+/** Cria os clientes dos provedores habilitados na configuração. */
+export function criarProvedores(cfg: ConfigIA): Map<IdProvedor, ProvedorIA> {
+  const m = new Map<IdProvedor, ProvedorIA>();
+  for (const [id, p] of cfg.provedores) {
+    if (p.def.tipo === "anthropic") m.set(id, new ProvedorAnthropic(p));
+    else if (p.def.tipo === "mock") m.set(id, new ProvedorMock());
+    else m.set(id, new ProvedorCompativel(p));
   }
-  return out;
+  return m;
 }

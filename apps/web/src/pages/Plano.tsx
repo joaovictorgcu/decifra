@@ -70,7 +70,7 @@ export function Plano() {
                     </select>
                   </Campo>
                   <Campo id={`pz-${t.id}`} rotulo="Prazo">
-                    <input type="date" id={`pz-${t.id}`} defaultValue={t.prazo} onBlur={(e) => e.target.value && e.target.value !== t.prazo && mudar(t, { prazo: e.target.value })} />
+                    <input type="date" id={`pz-${t.id}`} key={t.prazo} defaultValue={t.prazo} onBlur={(e) => e.target.value && e.target.value !== t.prazo && mudar(t, { prazo: e.target.value })} />
                   </Campo>
                 </div>
                 <div className="linha">

@@ -11,6 +11,7 @@ import type { ServicoIA } from "./ai/servico";
 import type { Env } from "./config/env";
 import type { Db } from "./lib/db";
 import { ErroApp } from "./lib/erros";
+import { respostaErroIA } from "./lib/mensagens-ia";
 import auth from "./plugins/auth";
 import { rotasAuth } from "./modules/auth";
 import { rotasPerfil } from "./modules/perfil";
@@ -104,14 +105,8 @@ export async function criarApp(ctx: Contexto): Promise<FastifyInstance> {
     }
     if (erro instanceof ErroIA) {
       req.log.warn({ motivo: erro.motivo }, "falha na IA");
-      const status = erro.motivo === "desativada" ? 503 : erro.motivo === "limite" ? 429 : 502;
-      const msg =
-        erro.motivo === "desativada"
-          ? "A IA não está configurada neste ambiente."
-          : erro.motivo === "recusa"
-            ? "A IA não pôde responder a este pedido. Reformule e tente de novo."
-            : "A IA não respondeu agora. Tente de novo em instantes.";
-      return reply.status(status).send({ erro: msg, codigo: `ia_${erro.motivo}` });
+      const r = respostaErroIA(erro);
+      return reply.status(r.status).send({ erro: r.erro, codigo: r.codigo });
     }
     const e = erro as { statusCode?: number; code?: string; message?: string };
     if (e.statusCode === 429) return reply.status(429).send({ erro: "Muitas requisições. Aguarde um instante e tente de novo.", codigo: "limite" });

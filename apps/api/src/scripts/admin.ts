@@ -22,7 +22,7 @@ async function main() {
       const dias = Number(args[0] ?? 7);
       const desde = new Date(Date.now() - dias * 864e5);
       const linhas = await db.aiInteraction.groupBy({
-        by: ["tarefa", "modelo", "status"],
+        by: ["tarefa", "nivel", "provedor", "modelo", "status"],
         where: { createdAt: { gte: desde } },
         _count: { _all: true },
         _sum: { tokensEntrada: true, tokensSaida: true },
@@ -31,6 +31,8 @@ async function main() {
       console.table(
         linhas.map((l) => ({
           tarefa: l.tarefa,
+          nivel: l.nivel,
+          provedor: l.provedor,
           modelo: l.modelo,
           status: l.status,
           chamadas: l._count._all,

@@ -1,21 +1,22 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
-import { ErroIA, type PedidoConversa, type PedidoJSON, type ProvedorIA, type RespostaIA } from "../tipos";
+import type { ProvedorConfigurado } from "../config";
+import { ErroIA, lerRetryAfter, type PedidoConversa, type PedidoJSON, type ProvedorIA, type RespostaIA } from "../tipos";
 
 /** Modelos que aceitam o fallback de recusa do lado do servidor (`fallbacks: "default"`). */
 const ACEITAM_FALLBACK = new Set(["claude-opus-5-5", "claude-opus-5", "claude-fable-5-2", "claude-fable-5-1", "claude-sonnet-5-5"]);
 const BETA_FALLBACK = "server-side-fallback-2026-07-01" as const;
 
+/** Anthropic (Claude) pelo SDK oficial, com saída estruturada nativa e streaming. */
 export class ProvedorAnthropic implements ProvedorIA {
-  readonly nome = "anthropic";
+  readonly id = "anthropic" as const;
   private readonly client: Anthropic;
+  private readonly fallbacks: "default" | "off";
 
-  constructor(
-    apiKey: string | undefined,
-    private readonly fallbacks: "default" | "off",
-  ) {
+  constructor(cfg: ProvedorConfigurado) {
     // Sem apiKey explícita, o SDK resolve credenciais do ambiente (ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN).
-    this.client = new Anthropic({ apiKey, maxRetries: 2 });
+    this.client = new Anthropic({ apiKey: cfg.apiKey, maxRetries: 1 });
+    this.fallbacks = cfg.anthropicFallbacks ?? "default";
   }
 
   private extras(modelo: string) {
@@ -39,11 +40,7 @@ export class ProvedorAnthropic implements ProvedorIA {
       if (resp.stop_reason === "refusal") throw new ErroIA("recusa", "O modelo recusou a solicitação.");
       if (resp.stop_reason === "max_tokens") throw new ErroIA("invalido", "Resposta cortada pelo limite de tokens.");
       if (resp.parsed_output == null) throw new ErroIA("invalido", "Resposta fora do formato esperado.");
-      return {
-        dados: resp.parsed_output as T,
-        uso: { entrada: resp.usage.input_tokens, saida: resp.usage.output_tokens },
-        modelo: resp.model,
-      };
+      return { dados: resp.parsed_output as T, uso: { entrada: resp.usage.input_tokens, saida: resp.usage.output_tokens }, modelo: resp.model };
     } catch (e) {
       throw normalizar(e);
     }
@@ -70,7 +67,7 @@ export class ProvedorAnthropic implements ProvedorIA {
         }
       }
       const final = await stream.finalMessage();
-      if (final.stop_reason === "refusal") throw new ErroIA("recusa", "O modelo recusou a solicitação.");
+      if (final.stop_reason === "refusal") throw new ErroIA("recusa", "O modelo recusou a solicitação.", { parcial: texto.length > 0 });
       return { dados: texto, uso: { entrada: final.usage.input_tokens, saida: final.usage.output_tokens }, modelo: final.model };
     } catch (e) {
       throw normalizar(e);
@@ -80,13 +77,16 @@ export class ProvedorAnthropic implements ProvedorIA {
 
 function normalizar(e: unknown): ErroIA {
   if (e instanceof ErroIA) return e;
-  if (e instanceof Anthropic.APIUserAbortError) return new ErroIA("tempo", "Tempo esgotado ao consultar a IA.", e);
-  if (e instanceof Anthropic.APIConnectionTimeoutError) return new ErroIA("tempo", "Tempo esgotado ao consultar a IA.", e);
+  if (e instanceof Anthropic.APIUserAbortError) return new ErroIA("tempo", "Chamada interrompida.", { causa: e });
+  if (e instanceof Anthropic.APIConnectionTimeoutError) return new ErroIA("tempo", "Tempo esgotado ao consultar a IA.", { causa: e });
   if (e instanceof Anthropic.AuthenticationError || e instanceof Anthropic.PermissionDeniedError) {
-    return new ErroIA("autenticacao", "Credencial da IA inválida ou sem permissão.", e);
+    return new ErroIA("autenticacao", "Credencial da IA inválida ou sem permissão.", { causa: e });
   }
-  if (e instanceof Anthropic.RateLimitError) return new ErroIA("limite", "Limite de uso da IA atingido.", e);
-  if (e instanceof Anthropic.BadRequestError) return new ErroIA("falha", `Requisição recusada pela API: ${e.message}`, e);
-  if (e instanceof Anthropic.APIError) return new ErroIA("falha", `Falha na API de IA (${e.status ?? "sem status"}).`, e);
-  return new ErroIA("falha", e instanceof Error ? e.message : "Falha desconhecida na IA.", e);
+  if (e instanceof Anthropic.RateLimitError) return new ErroIA("limite", "Limite de uso da IA atingido.", { causa: e, aposMs: lerRetryAfter(e.headers) });
+  if (e instanceof Anthropic.BadRequestError || e instanceof Anthropic.NotFoundError) {
+    return new ErroIA("requisicao", `Requisição recusada pela API (${e.status}).`, { causa: e });
+  }
+  if (e instanceof Anthropic.APIConnectionError) return new ErroIA("falha", "Não foi possível conectar à API de IA.", { causa: e });
+  if (e instanceof Anthropic.APIError) return new ErroIA("falha", `Falha na API de IA (${e.status ?? "sem status"}).`, { causa: e, aposMs: lerRetryAfter(e.headers) });
+  return new ErroIA("falha", e instanceof Error ? e.message : "Falha desconhecida na IA.", { causa: e });
 }

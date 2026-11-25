@@ -1,14 +1,16 @@
 import { ErroIA, type PedidoConversa, type PedidoJSON, type ProvedorIA, type RespostaIA } from "../tipos";
 
 /**
- * Provedor determinístico para testes de ponta a ponta e desenvolvimento sem
- * chave de API. Nunca é aceito com NODE_ENV=production (ver config/env.ts).
- * - Tarefas estruturadas: devolve "invalido", o que aciona o motor de regras,
+ * Provedor determinístico para testes de ponta a ponta. Nunca é aceito com
+ * NODE_ENV=production (ver ai/config.ts).
+ * - Tarefas estruturadas: devolve "invalido" (o motor de regras assume),
  *   exceto a importação de currículo, que vira um rascunho com a 1ª linha do documento.
  * - Conversa: responde citando a última mensagem, em trechos, como um stream real.
+ *   Gatilhos para testes: "#falhar" (falha antes de responder), "#cortar" (falha
+ *   no meio do stream) e "#lento" (stream lento, para testar o cancelamento).
  */
 export class ProvedorMock implements ProvedorIA {
-  readonly nome = "mock";
+  readonly id = "mock" as const;
 
   async gerarJSON<T>(req: PedidoJSON<T>): Promise<RespostaIA<T>> {
     if (req.nomeSchema === "evidencias_do_documento") {
@@ -20,19 +22,23 @@ export class ProvedorMock implements ProvedorIA {
         ],
       };
       const r = req.schema.safeParse(dados);
-      if (r.success) return { dados: r.data, uso: { entrada: 0, saida: 0 }, modelo: "mock" };
+      if (r.success) return { dados: r.data, uso: { entrada: 0, saida: 0 }, modelo: req.modelo };
     }
     throw new ErroIA("invalido", "mock: use o motor de regras");
   }
 
   async conversar(req: PedidoConversa, aoReceber: (t: string) => void): Promise<RespostaIA<string>> {
     const ultima = req.mensagens.at(-1)?.conteudo ?? "";
-    const texto = `Resposta de teste do Mentor para: **${ultima.slice(0, 80)}**\n\n- Primeiro passo: revise suas evidências.\n- Depois: faça um Raio-X.`;
-    for (const parte of texto.match(/.{1,12}/gs) ?? []) {
+    if (ultima.includes("#falhar")) throw new ErroIA("falha", "mock: falha simulada");
+    const texto = `Resposta de teste do Mentor para: **${ultima.replace(/#\w+/g, "").trim().slice(0, 80)}**\n\n- Primeiro passo: revise suas evidências.\n- Depois: faça um Raio-X.`;
+    const atraso = ultima.includes("#lento") ? 250 : 15;
+    const partes = texto.match(/.{1,12}/gs) ?? [];
+    for (const [i, parte] of partes.entries()) {
       if (req.signal.aborted) throw new ErroIA("tempo", "cancelado");
+      if (ultima.includes("#cortar") && i === 3) throw new ErroIA("falha", "mock: queda no meio do stream");
       aoReceber(parte);
-      await new Promise((r) => setTimeout(r, 15));
+      await new Promise((r) => setTimeout(r, atraso));
     }
-    return { dados: texto, uso: { entrada: 0, saida: 0 }, modelo: "mock" };
+    return { dados: texto, uso: { entrada: 0, saida: 0 }, modelo: req.modelo };
   }
 }

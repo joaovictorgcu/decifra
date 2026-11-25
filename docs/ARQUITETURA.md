@@ -7,8 +7,9 @@ Navegador (React SPA)
    │  fetch /api/*  (cookie de sessão httpOnly, cabeçalho x-decifra)
    │  SSE  /api/mentor/mensagens
    ▼
-API Fastify ───────────────► Provedor de IA (Anthropic | OpenAI | Ollama/compatível | nenhum)
-   │  módulos de rota → domínio (motor de regras) + serviço de IA
+API Fastify ── ServicoIA (roteador + fallback + disjuntor + privacidade) ──► Groq | Gemini | OpenRouter | Ollama
+   │                                                                     └─► Anthropic | OpenAI (opcionais, pagos)
+   │  módulos de rota → domínio (motor de regras) + tarefas de IA
    ▼
 Prisma ──► SQLite (local) / PostgreSQL (produção)
 ```
@@ -27,6 +28,8 @@ Em produção, um único processo Node serve a API e o build estático do fronte
 | **scrypt nativo** para senhas | bcrypt/argon2 | Sem dependência nativa (instala em qualquer SO), parâmetros fortes (N=16384, r=8) |
 | **React + React Router + TanStack Query** | Manter HTML/JS puro | Componentes reutilizáveis, rotas reais, cache e revalidação automáticos. O CSS original foi mantido, então a identidade não muda |
 | **Motor de regras como fallback da IA** | IA obrigatória | O produto funciona sem chave de API, com custo zero e de forma determinística; a IA melhora a cobertura, mas nunca é ponto único de falha |
+| **IA multi-provedor com roteamento determinístico** | Um provedor fixo; um "modelo roteador" | Gratuitos (Groq, Gemini, OpenRouter, Ollama) no dia a dia e pago só quando configurado e necessário; a escolha usa regras testáveis, sem chamada extra de IA (ver [IA.md](IA.md)) |
+| **Cliente único compatível com OpenAI** | Um SDK por fornecedor | Groq, Gemini, OpenRouter, Ollama e OpenAI expõem a mesma API; as diferenças (parâmetro de limite, formato JSON, cabeçalhos) ficam no catálogo. Anthropic usa o SDK oficial |
 
 ## Backend (`apps/api`)
 
@@ -35,7 +38,7 @@ Em produção, um único processo Node serve a API e o build estático do fronte
 - `src/plugins/auth.ts`: sessão por cookie e guardas `exigirLogin`, `exigirCandidato`, `exigirEmpresa`, `exigirPlus`.
 - `src/modules/*`: rotas por domínio. Toda consulta filtra pelo dono (`userId`/`companyId`), então um usuário não acessa dados de outro (testado).
 - `src/domain/*`: motor de análise puro (sem framework, sem banco): extração de requisitos, cruzamento, decisão, justificativa, ações, radar, tradutor, histórias, feedback e guarda de princípios.
-- `src/ai/*`: camada de IA (ver [IA.md](IA.md)).
+- `src/ai/*`: camada de IA: catálogo, configuração, roteador, disjuntor, serviço, privacidade, tarefas e provedores (ver [IA.md](IA.md)).
 - `src/lib/*`: erros de negócio (`ErroApp` com status e código estáveis), senha, tokens, leitura de PDF/TXT, mapeamentos banco → contrato.
 
 ### Regras de negócio principais
@@ -52,7 +55,7 @@ Em produção, um único processo Node serve a API e o build estático do fronte
 
 - Erros de negócio respondem `{ erro, codigo, campo? }` com status adequado (400, 401, 402 para plano, 403, 404, 409, 422, 429, 503).
 - Erros inesperados respondem 500 genérico e são registrados com stack no log (pino). Cabeçalhos de cookie/autorização e campos de senha são mascarados.
-- Cada chamada de IA é registrada em `AiInteraction` (tarefa, modelo, status, latência, tokens), sem guardar o conteúdo enviado.
+- Cada tentativa de IA é registrada em `AiInteraction` (tarefa, nível, provedor, modelo, tentativa, status, latência, tokens), sem guardar o conteúdo enviado. `npm run admin -- uso-ia 7` resume por tarefa, nível e provedor.
 
 ## Frontend (`apps/web`)
 
@@ -74,7 +77,9 @@ Em produção, um único processo Node serve a API e o build estático do fronte
 | Força bruta / abuso | Rate limit global (300/min) e por rota (login 10/min, IA 5–15/min); `TRUST_PROXY` por número de saltos (X-Forwarded-For forjado não burla o limite) |
 | Custo de IA | Teto diário de chamadas por usuário (`AI_LIMITE_DIARIO`, acima dele usa regras); limite diário do Mentor por plano |
 | Upload malicioso | Até 5 MB, 1 arquivo; tipo conferido pelo conteúdo (`%PDF-`); nada é gravado em disco |
-| Prompt injection | Dados do usuário delimitados por marcações e tratados como dado; saída validada por schema e por guardas; a IA só pode apontar evidências que existem e pertencem à pessoa; links importados precisam existir no documento |
+| Prompt injection | Dados do usuário (e textos de empresas) delimitados por marcações e tratados como dado; saída validada por schema e por guardas; a IA só pode apontar evidências que existem e pertencem à pessoa; links importados precisam existir no documento. Testado com instrução maliciosa real em vaga |
+| Privacidade na IA | E-mail, telefone e CPF removidos antes do envio; tarefas sensíveis (Mentor, currículo) só em provedores que não treinam com os dados; política configurável (`AI_PRIVACIDADE`) |
+| Chaves de IA | Só no backend; nunca em respostas HTTP, no navegador ou nos logs (o log mostra só provedores e rotas) |
 | Redirecionamento aberto | `?volta=` aceita só caminhos internos |
 | Segredos | Só em variáveis de ambiente; `.env` no `.gitignore`; `.env.example` sem valores |
 | LGPD | Exportação de todos os dados e exclusão de conta em cascata |

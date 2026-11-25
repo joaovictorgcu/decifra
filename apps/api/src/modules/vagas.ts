@@ -1,7 +1,7 @@
 import { LIMITE_RAIO_GRATIS, vagaCandidatoSchema, type Fonte, type VagaDetalhe, type VagaResumo } from "@decifra/shared";
 import type { User } from "@prisma/client";
 import type { FastifyInstance } from "fastify";
-import { extrairRequisitosIA } from "../ai/tarefas";
+import { descreverMeta, extrairRequisitosIA } from "../ai/tarefas";
 import { extrairRequisitos } from "../domain/extrair";
 import { raio, radar } from "../domain/raio";
 import { dataMais } from "../domain/texto";
@@ -37,6 +37,7 @@ export async function rotasVagas(app: FastifyInstance) {
       empresa: job.empresa,
       texto: job.texto,
       fonte: job.fonte as Fonte,
+      ia: job.iaDescricao,
       vagaEmpresaId: job.companyJobId,
       criadaEm: job.createdAt.toISOString(),
       decisao: r.decisao,
@@ -46,7 +47,11 @@ export async function rotasVagas(app: FastifyInstance) {
     };
   }
 
-  async function salvarVaga(u: User, dados: { titulo: string; empresa: string; texto: string; fonte: Fonte; companyJobId: string | null }, reqs: RequisitoDom[]) {
+  async function salvarVaga(
+    u: User,
+    dados: { titulo: string; empresa: string; texto: string; fonte: Fonte; iaDescricao?: string | null; companyJobId: string | null },
+    reqs: RequisitoDom[],
+  ) {
     const job = await db.$transaction(async (tx) => {
       const j = await tx.job.create({
         data: {
@@ -55,6 +60,7 @@ export async function rotasVagas(app: FastifyInstance) {
           empresa: dados.empresa,
           texto: dados.texto,
           fonte: dados.fonte,
+          iaDescricao: dados.iaDescricao ?? null,
           companyJobId: dados.companyJobId,
           requisitos: {
             create: reqs.map((r, i) => ({ ordem: i, requisito: r.requisito, curto: r.curto, tipo: r.tipo, kind: r.kind, obrig: r.obrig, evId: r.evId, aceita: r.aceita })),
@@ -76,6 +82,7 @@ export async function rotasVagas(app: FastifyInstance) {
       titulo: v.titulo,
       empresa: v.empresa,
       fonte: v.fonte as Fonte,
+      ia: v.iaDescricao,
       vagaEmpresaId: v.companyJobId,
       criadaEm: v.criadaEm.toISOString(),
       decisao: raio(v, evs).decisao,
@@ -89,12 +96,12 @@ export async function rotasVagas(app: FastifyInstance) {
     await checarLimite(u);
     const evs = await evidenciasDe(db, u.id);
     const reqsIA = await extrairRequisitosIA(ia, u.id, d.texto, evs);
-    const reqs = reqsIA ?? extrairRequisitos(d.texto);
+    const reqs = reqsIA?.valor ?? extrairRequisitos(d.texto);
     if (!reqs.length) {
       throw new ErroApp(422, "sem_requisitos", "Não encontrei requisitos. Cole a parte da vaga que lista conhecimentos, ferramentas e tempo de experiência.", "texto");
     }
     const titulo = d.titulo || d.texto.split("\n")[0]?.replace(/^vaga:\s*/i, "").slice(0, 80).trim() || "Vaga sem nome";
-    const job = await salvarVaga(u, { titulo, empresa: "", texto: d.texto, fonte: reqsIA ? "ia" : "regras", companyJobId: null }, reqs);
+    const job = await salvarVaga(u, { titulo, empresa: "", texto: d.texto, fonte: reqsIA ? "ia" : "regras", iaDescricao: reqsIA ? descreverMeta(reqsIA.meta) : null, companyJobId: null }, reqs);
     return reply.status(201).send(await detalhe(u.id, job.id));
   });
 

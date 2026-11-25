@@ -1,6 +1,6 @@
 import { AREAS, evidenciaSchema, importarEvidenciasSchema, type AreaId } from "@decifra/shared";
 import type { FastifyInstance } from "fastify";
-import { importarCurriculoIA } from "../ai/tarefas";
+import { descreverMeta, importarCurriculoIA } from "../ai/tarefas";
 import { lerTextoEnviado } from "../lib/arquivo";
 import { ErroApp, naoEncontrado, validar } from "../lib/erros";
 import { gravarLista } from "../lib/json";
@@ -61,12 +61,16 @@ export async function rotasEvidencias(app: FastifyInstance) {
 
   app.post("/evidencias/importar/analisar", { config: { rateLimit: { max: 5, timeWindow: "1 minute" } } }, async (req) => {
     const u = exigirCandidato(req);
-    if (!ia.ativa) throw new ErroApp(503, "ia_desativada", "A importação de currículo usa IA, que não está configurada neste ambiente.");
+    if (!ia.disponivelPara("importar_cv")) {
+      throw new ErroApp(503, ia.ativa ? "ia_privacidade" : "ia_desativada", ia.ativa
+        ? "Por privacidade, a leitura de currículo só usa provedores de IA que não treinam com seus dados, e nenhum deles está configurado aqui."
+        : "A importação de currículo usa IA, que não está configurada neste ambiente.");
+    }
     const { nome, texto } = await lerTextoEnviado(req);
     const perfil = await db.candidateProfile.findUnique({ where: { userId: u.id } });
     const area = perfil ? (AREAS[perfil.destino as AreaId]?.nome ?? "tecnologia") : "tecnologia";
-    const rascunhos = await importarCurriculoIA(ia, u.id, texto, area);
-    return { arquivo: nome, rascunhos };
+    const r = await importarCurriculoIA(ia, u.id, texto, area);
+    return { arquivo: nome, rascunhos: r.valor, ia: descreverMeta(r.meta) };
   });
 
   app.post("/evidencias/importar", async (req, reply) => {

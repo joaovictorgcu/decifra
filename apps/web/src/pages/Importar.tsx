@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api/cliente";
 import { useAcao } from "../api/consultas";
-import { Botao, Cabecalho, Carregando, ErroForm, Vazio } from "../components/ui";
+import { Botao, Cabecalho, Carregando, ErroForm, OrigemResultado, Vazio } from "../components/ui";
 import { avisar } from "../lib/avisos";
 import { useSessaoAtiva } from "../lib/sessao";
 import { CamposEvidencia } from "./EvidenciaForm";
@@ -15,15 +15,17 @@ export function Importar() {
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [arrastando, setArrastando] = useState(false);
   const [rascunhos, setRascunhos] = useState<(EvidenciaInput & { marcado: boolean })[] | null>(null);
-  const analisar = useAcao((f: File) => api.enviarArquivo<{ arquivo: string; rascunhos: EvidenciaInput[] }>("/evidencias/importar/analisar", f));
+  const analisar = useAcao((f: File) => api.enviarArquivo<{ arquivo: string; rascunhos: EvidenciaInput[]; ia: string }>("/evidencias/importar/analisar", f));
   const salvar = useAcao((evs: EvidenciaInput[]) => api.post<{ itens: unknown[] }>("/evidencias/importar", { evidencias: evs }));
 
-  if (!s.ia.ativa) {
+  if (!s.ia.importacao) {
     return (
       <>
         <Cabecalho titulo="Importar do currículo" selo="Prova, não palavra-chave" />
         <Vazio titulo="Importação indisponível neste ambiente" acao={<Link className="link" to="/evidencias/nova">Registrar uma evidência manualmente</Link>}>
-          A leitura do currículo usa IA, que não está configurada aqui. Você pode registrar suas evidências manualmente.
+          {s.ia.ativa
+            ? "Currículos têm dados pessoais. Por privacidade, a leitura só usa provedores de IA que não treinam com seus dados, e nenhum deles está configurado aqui. Você pode registrar suas evidências manualmente."
+            : "A leitura do currículo usa IA, que não está configurada aqui. Você pode registrar suas evidências manualmente."}
         </Vazio>
       </>
     );
@@ -62,7 +64,9 @@ export function Importar() {
             Arquivo PDF ou TXT, até 5 MB
           </label>
           <input id="cv" type="file" accept=".pdf,.txt,application/pdf,text/plain" onChange={(e) => escolher(e.target.files?.[0])} />
-          <p className="apoio">O arquivo é lido e descartado. Só ficam salvas as evidências que você escolher.</p>
+          <p className="apoio">
+            O arquivo é lido e descartado. Antes de ir para a IA, removemos e-mail, telefone e CPF, e só usamos provedores que não treinam com seus dados. Só ficam salvas as evidências que você escolher.
+          </p>
           <ErroForm erro={analisar.error} />
           <div className="linha">
             <Botao
@@ -93,6 +97,7 @@ export function Importar() {
           <h2>
             {rascunhos.length} {rascunhos.length === 1 ? "sugestão" : "sugestões"} de evidência
           </h2>
+          {analisar.data && <OrigemResultado fonte="ia" ia={analisar.data.ia} />}
           <p className="apoio leitura">Desmarque o que não quiser e ajuste o texto. Campos vazios indicam algo que o documento não diz: complete depois, com o que você consegue demonstrar.</p>
           {rascunhos.map((r, i) => (
             <article className="cartao rascunho" key={i}>

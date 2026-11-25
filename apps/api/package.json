@@ -12,7 +12,8 @@
     "db:studio": "dotenv -e ../../.env -- prisma studio",
     "admin": "tsx --env-file-if-exists=../../.env src/scripts/admin.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "avaliar:ia": "tsx --env-file-if-exists=../../.env src/scripts/avaliar-ia.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.14.0",

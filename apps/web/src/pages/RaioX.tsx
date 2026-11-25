@@ -164,6 +164,11 @@ export function RaioX() {
           Neste ambiente a IA está desligada, então os requisitos são lidos pelo motor de regras da DECIFRA. Ele reconhece as competências mais comuns de vagas de entrada.
         </Vazio>
       )}
+      {s.ia.ativa && (
+        <p className="fonte">
+          <b aria-hidden="true">✦</b>A leitura da vaga usa IA ({s.ia.provedores.join(", ")}). Se a IA não responder, o motor de regras assume e o resultado indica isso.
+        </p>
+      )}
     </>
   );
 }

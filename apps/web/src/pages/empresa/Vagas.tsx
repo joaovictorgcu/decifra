@@ -6,7 +6,7 @@ import { Confirmar } from "../../components/Confirmar";
 import { Botao, Cabecalho, CampoArea, CampoSelecao, CampoTexto, Carregando, ErroForm, Esqueleto, Etiqueta, Falha, OrigemResultado, Vazio, erroDoCampo } from "../../components/ui";
 import { avisar } from "../../lib/avisos";
 
-type Rascunho = { titulo: string; texto: string; fonte: Fonte; requisitos: (Requisito & { aceita: "" | "sim" | "nao" })[] };
+type Rascunho = { titulo: string; texto: string; fonte: Fonte; ia: string | null; requisitos: (Requisito & { aceita: "" | "sim" | "nao" })[] };
 
 export function VagasEmpresa() {
   const q = useVagasEmpresa();
@@ -38,7 +38,7 @@ export function VagasEmpresa() {
     return (
       <>
         <Cabecalho titulo={`Revise: ${rasc.titulo}`} sub="Separe o que é indispensável do que é desejável. Quem decide é a sua empresa." />
-        <OrigemResultado fonte={rasc.fonte} />
+        <OrigemResultado fonte={rasc.fonte} ia={rasc.ia} />
         <form
           className="pilha"
           onSubmit={(e) => {

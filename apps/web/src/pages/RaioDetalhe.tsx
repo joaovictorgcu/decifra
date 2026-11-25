@@ -45,7 +45,7 @@ export function RaioDetalhe() {
             {f}
           </p>
         ))}
-        <OrigemResultado fonte={v.fonte} />
+        <OrigemResultado fonte={v.fonte} ia={v.ia} />
       </section>
       <section className="pilha">
         <h2>Requisitos da vaga</h2>

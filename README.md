@@ -19,7 +19,7 @@ Este repositório transforma o protótipo HTML original ([`prototype/DECIFRA.htm
 - **Radar de Vagas** (Plus): requisitos que se repetem e qual lacuna resolver primeiro.
 - **Candidaturas**: quadro por etapa, ligado ao Raio-X de cada vaga.
 - **Preparação para Entrevista** (Plus): histórias STAR a partir das evidências e feedback de respostas.
-- **Mentor DECIFRA** (IA): assistente conversacional em streaming que conhece o contexto real da pessoa, com histórico de conversas.
+- **Mentor DECIFRA** (IA): assistente conversacional em streaming que conhece o contexto real da pessoa, adaptado à etapa, com histórico, sugestões iniciais, cancelamento e indicação do modelo usado.
 - **Perfil de Evidências**: página pública opcional (privada por padrão) para enviar no lugar de um currículo genérico.
 - **Minha conta**: troca de senha, exportação de dados e exclusão de conta (LGPD).
 
@@ -35,7 +35,7 @@ Este repositório transforma o protótipo HTML original ([`prototype/DECIFRA.htm
 | Frontend | React 19, React Router 7, TanStack Query 5, Vite 8, CSS original do protótipo |
 | Backend | Node.js 20+, Fastify 5, Zod 4, TypeScript |
 | Banco | Prisma 6 + SQLite (local) / PostgreSQL (produção) |
-| IA | Anthropic (Claude) via SDK oficial, OpenAI ou servidores compatíveis (Ollama, LM Studio, vLLM, OpenRouter), ou motor de regras sem IA |
+| IA | Groq, Google Gemini, OpenRouter e Ollama (gratuitos); Anthropic e OpenAI (opcionais); roteamento por tarefa e complexidade com fallback; motor de regras sem IA |
 | Testes | Vitest (domínio + integração da API), Playwright + axe-core (E2E, acessibilidade, desktop e celular) |
 
 Detalhes e justificativas em [docs/ARQUITETURA.md](docs/ARQUITETURA.md).
@@ -55,29 +55,37 @@ npm run dev                   # API em :3333 e app em http://localhost:5173
 
 Abra http://localhost:5173, crie uma conta de candidato ou de empresa e use normalmente. Não há dados fictícios: tudo o que aparece foi criado por você.
 
-### Ativando a IA
+### Inteligência Artificial (sem custo obrigatório)
 
-Sem configuração, `AI_PROVIDER=none`: o produto funciona inteiro com o **motor de regras** (Raio-X, Tradutor, histórias e feedback), e o Mentor e a importação de currículo ficam indisponíveis com aviso na tela. Para ativar, edite o `.env`:
+**Sem nenhuma chave**, o produto funciona inteiro com o **motor de regras** (Raio-X, Tradutor, histórias e feedback). O Mentor e a importação de currículo aparecem indisponíveis, com explicação na tela.
+
+Para ligar a IA de graça, escolha uma ou mais opções no `.env`:
 
 ```bash
-# Claude (recomendado)
-AI_PROVIDER=anthropic
-ANTHROPIC_API_KEY=sk-ant-...
-# AI_MODEL=claude-opus-5-5          # padrão
-# AI_MODEL_FAST=claude-haiku-5-5    # opcional, barateia tarefas rápidas
+# Groq: gratuito, não treina com seus dados (chave em console.groq.com/keys)
+GROQ_API_KEY=gsk_...
 
-# ou OpenAI
-AI_PROVIDER=openai
-OPENAI_API_KEY=...
-AI_MODEL=<modelo>
+# Google Gemini: gratuito; no plano grátis o Google pode usar os dados, por isso
+# a DECIFRA não envia currículo nem o contexto do Mentor para ele (chave em aistudio.google.com/apikey)
+GEMINI_API_KEY=AIza...
 
-# ou modelo open source local com Ollama
-AI_PROVIDER=openai-compatible
-OPENAI_BASE_URL=http://localhost:11434/v1
-AI_MODEL=llama3.1
+# Ollama: local, nada sai da sua máquina (ollama.com; depois: ollama pull qwen2.5:7b-instruct)
+OLLAMA_MODEL=qwen2.5:7b-instruct
+
+# OpenRouter: modelos ":free" de vários fornecedores (chave em openrouter.ai/keys)
+OPENROUTER_API_KEY=sk-or-...
+OPENROUTER_MODEL=<um modelo terminado em :free>
 ```
 
-As chaves ficam só no backend. Veja [docs/IA.md](docs/IA.md) para a comparação entre provedores, custos e a arquitetura.
+Anthropic (`ANTHROPIC_API_KEY`) e OpenAI (`OPENAI_API_KEY`) continuam suportados para quem quiser usar a própria chave. Com `AI_AVANCADO=anthropic`, eles ficam reservados às tarefas complexas.
+
+O roteador escolhe o provedor e o modelo por tarefa e complexidade, tenta o próximo provedor quando um falha ou atinge o limite gratuito, respeita a privacidade e mostra na tela qual modelo gerou cada resultado. Para validar as chaves com chamadas reais (só provedores gratuitos, por padrão):
+
+```bash
+npm run avaliar:ia -w @decifra/api
+```
+
+Guia completo (provedores, modelos, limites gratuitos, privacidade e exemplos): [docs/IA.md](docs/IA.md).
 
 ### Ativando o plano Plus
 
@@ -99,8 +107,9 @@ Outros comandos: `npm run admin -- uso-ia 7` (uso e latência da IA nos últimos
 | `npm run db:migrate` | Cria/aplica migrações em desenvolvimento |
 | `npm run db:deploy` | Aplica migrações em produção |
 | `npm run typecheck` | Verificação de tipos de todos os pacotes |
-| `npm test` | Testes unitários e de integração da API (51 testes) |
-| `npm run test:e2e` | Testes de interface (Playwright) em desktop e celular. Rode `npm run build` antes. Na primeira vez: `npx playwright install chromium` |
+| `npm test` | Testes unitários, de integração e de roteamento da IA (79 testes, sem chamadas reais) |
+| `npm run avaliar:ia -w @decifra/api` | Avaliação real das tarefas de IA nos provedores configurados (ignora pagos sem `--permitir-pagos`) |
+| `npm run test:e2e` | Testes de interface (Playwright) em desktop, tablet e celular. Rode `npm run build` antes. Na primeira vez: `npx playwright install chromium` |
 
 ## Estrutura
 
@@ -110,7 +119,7 @@ decifra/
 │   ├── api/                  # Backend Fastify
 │   │   ├── prisma/           # schema.prisma e migrações
 │   │   ├── src/
-│   │   │   ├── ai/           # camada de IA: provedores, serviço, prompts, tarefas
+│   │   │   ├── ai/           # camada de IA: catálogo, config, roteador, disjuntor, serviço, provedores, prompts, tarefas
 │   │   │   ├── domain/       # motor de análise (Raio-X, radar, regras) sem dependência de framework
 │   │   │   ├── modules/      # rotas HTTP por domínio (auth, vagas, evidências, mentor, empresa...)
 │   │   │   ├── plugins/      # autenticação e guardas de acesso

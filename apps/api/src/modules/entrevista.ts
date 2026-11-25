@@ -1,7 +1,7 @@
 import { historiaSchema, treinoSchema, type Feedback, type Fonte, type Historia } from "@decifra/shared";
 import type { InterviewStory } from "@prisma/client";
 import type { FastifyInstance } from "fastify";
-import { feedbackIA, historiaIA } from "../ai/tarefas";
+import { descreverMeta, feedbackIA, historiaIA } from "../ai/tarefas";
 import { completa } from "../domain/raio";
 import { feedbackPorRegras, historiaPorRegras } from "../domain/regras";
 import { naoEncontrado, validar } from "../lib/erros";
@@ -22,6 +22,7 @@ export async function rotasEntrevista(app: FastifyInstance) {
     acao: h.acao,
     resultado: h.resultado,
     fonte: h.fonte as Fonte,
+    ia: h.iaDescricao,
   });
 
   app.get("/historias", async (req) => {
@@ -40,9 +41,9 @@ export async function rotasEntrevista(app: FastifyInstance) {
     const ev = evidenciaDom(row);
     // Só chama a IA quando a evidência está completa; senão, o modelo teria de inventar.
     const viaIA = completa(ev) ? await historiaIA(ia, u.id, d.pergunta, ev) : null;
-    const h = viaIA ?? historiaPorRegras(ev);
+    const h = viaIA?.valor ?? historiaPorRegras(ev);
     const salvo = await db.interviewStory.create({
-      data: { userId: u.id, pergunta: d.pergunta, evidenceId: ev.id, evidencia: ev.titulo, ...h, fonte: viaIA ? "ia" : "regras" },
+      data: { userId: u.id, pergunta: d.pergunta, evidenceId: ev.id, evidencia: ev.titulo, ...h, fonte: viaIA ? "ia" : "regras", iaDescricao: viaIA ? descreverMeta(viaIA.meta) : null },
     });
     return reply.status(201).send(dto(salvo));
   });
@@ -59,6 +60,6 @@ export async function rotasEntrevista(app: FastifyInstance) {
     exigirPlus(u, "A Preparação para Entrevista");
     const d = validar(treinoSchema, req.body);
     const viaIA = await feedbackIA(ia, u.id, d.pergunta, d.resposta);
-    return viaIA ? { ...viaIA, fonte: "ia" } : { ...feedbackPorRegras(d.resposta), fonte: "regras" };
+    return viaIA ? { ...viaIA.valor, fonte: "ia", ia: descreverMeta(viaIA.meta) } : { ...feedbackPorRegras(d.resposta), fonte: "regras", ia: null };
   });
 }

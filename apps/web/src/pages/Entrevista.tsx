@@ -91,7 +91,7 @@ export function Entrevista() {
             <p>
               <strong>Resultado:</strong> {h.resultado}
             </p>
-            <OrigemResultado fonte={h.fonte} />
+            <OrigemResultado fonte={h.fonte} ia={h.ia} />
             <div>
               <Botao className="botao peq" carregando={remover.isPending && remover.variables === h.id} onClick={() => remover.mutate(h.id, { onSuccess: () => avisar("História removida") })}>
                 Remover
@@ -128,7 +128,7 @@ export function Entrevista() {
                   <li key={x}>• {x}</li>
                 ))}
               </ul>
-              <OrigemResultado fonte={feedback.data.fonte} />
+              <OrigemResultado fonte={feedback.data.fonte} ia={feedback.data.ia} />
             </article>
           )}
         </div>

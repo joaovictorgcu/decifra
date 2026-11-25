@@ -97,12 +97,41 @@ test.describe("jornada do candidato", () => {
     await anon2.close();
   });
 
+  test("Mentor: cancelamento, falha antes da resposta e queda no meio do stream", async ({ page }) => {
+    await cadastrarCandidato(page);
+    await irPara(page, "Mentor");
+    const caixa = page.getByLabel("Sua mensagem");
+
+    // Falha antes de responder: erro claro, pergunta devolvida ao campo e nada gravado.
+    await caixa.fill("Pergunta que vai falhar #falhar");
+    await page.getByRole("button", { name: "Enviar" }).click();
+    await expect(page.getByRole("alert")).toContainText("A IA está indisponível agora");
+    await expect(caixa).toHaveValue("Pergunta que vai falhar #falhar");
+    await expect(page.getByRole("button", { name: "Tentar de novo" })).toBeVisible();
+
+    // Cancelamento durante o stream: a resposta parcial fica marcada como interrompida.
+    await caixa.fill("Resposta longa #lento");
+    await page.getByRole("button", { name: "Enviar" }).click();
+    await expect(page.getByText("Resposta de teste")).toBeVisible();
+    await page.getByRole("button", { name: "Parar" }).click();
+    await expect(page.getByText("Resposta interrompida.")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Parar" })).toBeHidden();
+
+    // Queda no meio do stream: mantém o que chegou, marca e avisa.
+    await page.getByRole("link", { name: "Nova conversa" }).click();
+    await caixa.fill("Vai cair no meio #cortar");
+    await page.getByRole("button", { name: "Enviar" }).click();
+    await expect(page.getByRole("alert")).toContainText("A resposta foi interrompida");
+    await expect(page.getByText("Resposta interrompida.").last()).toBeVisible();
+  });
+
   test("Mentor responde em streaming e guarda o histórico", async ({ page }) => {
     await cadastrarCandidato(page);
     await irPara(page, "Mentor");
     await page.getByLabel("Sua mensagem").fill("Por onde eu começo?");
     await page.getByRole("button", { name: "Enviar" }).click();
     await expect(page.getByText("Resposta de teste do Mentor para:")).toBeVisible();
+    await expect(page.getByText("Gerado por IA · Simulador de testes")).toBeVisible();
     await expect(page).toHaveURL(/\/mentor\/.+/);
     await expect(page.getByRole("complementary", { name: "Conversas" }).getByRole("link", { name: "Por onde eu começo?" })).toBeVisible();
     await page.reload();

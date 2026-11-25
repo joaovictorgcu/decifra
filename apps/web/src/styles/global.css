@@ -259,3 +259,5 @@ details > summary { cursor: pointer; font-weight: 600; color: var(--marinho); mi
 
 a.aba { display: inline-flex; align-items: center; text-decoration: none; }
 .aba[aria-current="page"] { background: var(--marinho); border-color: var(--marinho); color: var(--branco); }
+.msg-origem { font-size: .75rem; color: var(--cinza-texto); margin-top: 2px; }
+.msg.user .msg-origem { color: #D5DEEA; }

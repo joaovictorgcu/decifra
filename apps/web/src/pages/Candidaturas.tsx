@@ -1,13 +1,17 @@
-import { ETAPAS_CANDIDATURA, type EtapaCandidatura } from "@decifra/shared";
+import { ETAPAS_CANDIDATURA, type Candidatura, type EtapaCandidatura } from "@decifra/shared";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/cliente";
 import { useAcao, useCandidaturas } from "../api/consultas";
+import { Confirmar } from "../components/Confirmar";
 import { Cabecalho, Esqueleto, Falha, Vazio } from "../components/ui";
 import { avisar } from "../lib/avisos";
 
 export function Candidaturas() {
   const q = useCandidaturas();
   const mover = useAcao((d: { id: string; etapa: EtapaCandidatura }) => api.patch(`/candidaturas/${d.id}`, { etapa: d.etapa }));
+  const remover = useAcao((id: string) => api.del(`/candidaturas/${id}`));
+  const [alvo, setAlvo] = useState<Candidatura | null>(null);
   const cs = q.data ?? [];
   const sem = cs.filter((x) => x.etapa === "Sem retorno").length;
   return (
@@ -60,9 +64,14 @@ export function Candidaturas() {
                         ))}
                       </select>
                     </div>
-                    <Link className="link" to={`/raio-x/${x.vagaId}`} aria-label={`Ver Raio-X de ${x.vagaTitulo}`}>
-                      Ver Raio-X
-                    </Link>
+                    <div className="linha">
+                      <Link className="link" to={`/raio-x/${x.vagaId}`} aria-label={`Ver Raio-X de ${x.vagaTitulo}`}>
+                        Ver Raio-X
+                      </Link>
+                      <button type="button" className="link perigo" onClick={() => setAlvo(x)} aria-label={`Remover candidatura: ${x.vagaTitulo}`}>
+                        Remover
+                      </button>
+                    </div>
                   </article>
                 ))}
               </section>
@@ -70,6 +79,16 @@ export function Candidaturas() {
           })}
         </div>
       )}
+      <Confirmar
+        aberto={!!alvo}
+        titulo="Remover esta candidatura?"
+        confirmar="Remover"
+        carregando={remover.isPending}
+        aoFechar={() => setAlvo(null)}
+        aoConfirmar={() => alvo && remover.mutate(alvo.id, { onSuccess: () => (setAlvo(null), avisar("Candidatura removida")), onError: (e) => avisar(e.message, "erro") })}
+      >
+        <p>{alvo?.vagaTitulo}. O Raio-X da vaga continua salvo.</p>
+      </Confirmar>
     </>
   );
 }

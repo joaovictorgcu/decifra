@@ -221,9 +221,16 @@ export function Vazio({ titulo, children, acao }: { titulo: string; children?: R
   );
 }
 
-/** Mostra de onde veio o resultado: modelo de IA, motor de regras ou dados da empresa. */
-export function OrigemResultado({ fonte }: { fonte: Fonte }) {
-  const t = { ia: "Análise feita com IA e conferida pelas regras da DECIFRA", regras: "Análise feita pelo motor de regras da DECIFRA", empresa: "Requisitos e pesos revisados pela própria empresa" }[fonte];
+/**
+ * Mostra de onde veio o resultado: modelo de IA (com provedor e modelo), motor
+ * de regras ou dados da empresa. Resultado de regras nunca aparece como IA.
+ */
+export function OrigemResultado({ fonte, ia }: { fonte: Fonte; ia?: string | null }) {
+  const t = {
+    ia: `Análise feita com IA${ia ? ` (${ia})` : ""} e conferida pelas regras da DECIFRA`,
+    regras: "Análise feita pelo motor de regras da DECIFRA, sem IA",
+    empresa: "Requisitos e pesos revisados pela própria empresa",
+  }[fonte];
   return (
     <p className="fonte">
       <b aria-hidden="true">{fonte === "ia" ? "✦" : "•"}</b>

@@ -16,7 +16,17 @@ export function Markdown({ texto }: { texto: string }) {
   let i = 0;
   while (i < linhas.length) {
     const l = linhas[i]!;
-    if (!l.trim()) {
+    if (!l.trim() || /^\s*([-*_])\1{2,}\s*$/.test(l)) {
+      i++;
+      continue;
+    }
+    // Títulos viram um parágrafo em negrito (o Mentor não deve usá-los, mas modelos menores às vezes usam).
+    if (/^\s*#{1,6}\s+/.test(l)) {
+      blocos.push(
+        <p key={`h${i}`}>
+          <strong>{inline(l.replace(/^\s*#{1,6}\s+/, "").replace(/\*\*/g, ""))}</strong>
+        </p>,
+      );
       i++;
       continue;
     }

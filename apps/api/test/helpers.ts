@@ -1,35 +1,82 @@
 import type { FastifyInstance, LightMyRequestResponse } from "fastify";
 import { PrismaClient } from "@prisma/client";
 import { criarApp } from "../src/app";
+import { CATALOGO } from "../src/ai/catalogo";
+import type { ConfigIA, ProvedorConfigurado } from "../src/ai/config";
 import { ServicoIA, type RegistroInteracao } from "../src/ai/servico";
-import { ErroIA, type PedidoConversa, type PedidoJSON, type ProvedorIA, type RespostaIA } from "../src/ai/tipos";
+import { ErroIA, type IdProvedor, type PedidoConversa, type PedidoJSON, type ProvedorIA, type RespostaIA } from "../src/ai/tipos";
 import { carregarEnv } from "../src/config/env";
 
 process.env.DATABASE_URL = "file:./test-suite.db";
 export const db = new PrismaClient();
 
-/** Provedor de IA fake: responde por nome de schema; permite simular falhas. */
+/** Provedor de IA fake: responde por nome de schema; permite simular falhas e streaming. */
 export class ProvedorFake implements ProvedorIA {
-  readonly nome = "fake";
   respostas: Record<string, unknown> = {};
   falhar: ErroIA | null = null;
-  pedidos: { nomeSchema?: string; mensagem?: string; sistema: string }[] = [];
+  /** Falha depois de N trechos de streaming (simula queda no meio da resposta). */
+  falharAposTrechos: number | null = null;
+  pedidos: { nomeSchema?: string; mensagem?: string; sistema: string; modelo: string }[] = [];
   textoChat = "Olá! Comece pelo mini-projeto de SQL.";
+  atrasoMs = 0;
+
+  constructor(readonly id: IdProvedor = "groq") {}
 
   async gerarJSON<T>(req: PedidoJSON<T>): Promise<RespostaIA<T>> {
-    this.pedidos.push({ nomeSchema: req.nomeSchema, mensagem: req.mensagem, sistema: req.sistema });
+    this.pedidos.push({ nomeSchema: req.nomeSchema, mensagem: req.mensagem, sistema: req.sistema, modelo: req.modelo });
     if (this.falhar) throw this.falhar;
+    if (this.atrasoMs) await esperar(this.atrasoMs, req.signal);
     const r = req.schema.safeParse(this.respostas[req.nomeSchema]);
     if (!r.success) throw new ErroIA("invalido", "fake: fora do schema");
-    return { dados: r.data, uso: { entrada: 10, saida: 5 }, modelo: "fake-1" };
+    return { dados: r.data, uso: { entrada: 10, saida: 5 }, modelo: req.modelo };
   }
 
   async conversar(req: PedidoConversa, aoReceber: (t: string) => void): Promise<RespostaIA<string>> {
-    this.pedidos.push({ sistema: req.sistema, mensagem: req.mensagens.at(-1)?.conteudo });
-    if (this.falhar) throw this.falhar;
-    for (const parte of this.textoChat.split(" ")) aoReceber(`${parte} `);
-    return { dados: this.textoChat, uso: { entrada: 10, saida: 5 }, modelo: "fake-1" };
+    this.pedidos.push({ sistema: req.sistema, mensagem: req.mensagens.at(-1)?.conteudo, modelo: req.modelo });
+    if (this.falhar && this.falharAposTrechos === null) throw this.falhar;
+    for (const [i, parte] of this.textoChat.split(" ").entries()) {
+      if (this.falharAposTrechos !== null && i === this.falharAposTrechos) throw this.falhar ?? new ErroIA("falha", "queda");
+      if (this.atrasoMs) await esperar(this.atrasoMs, req.signal);
+      aoReceber(`${parte} `);
+    }
+    return { dados: this.textoChat, uso: { entrada: 10, saida: 5 }, modelo: req.modelo };
   }
+}
+
+function esperar(ms: number, signal: AbortSignal) {
+  return new Promise<void>((ok, falha) => {
+    const t = setTimeout(ok, ms);
+    signal.addEventListener("abort", () => (clearTimeout(t), falha(new ErroIA("tempo", "abortado"))), { once: true });
+  });
+}
+
+/** Configuração de IA para testes, com os provedores na ordem dada em todos os níveis. */
+export function configTeste(ids: IdProvedor[], extra: Partial<ConfigIA> = {}): ConfigIA {
+  const provedores = new Map<IdProvedor, ProvedorConfigurado>();
+  for (const id of ids) {
+    const def = CATALOGO[id];
+    provedores.set(id, {
+      def,
+      modelos: { simples: `${id}-simples`, intermediaria: `${id}-intermediario`, complexa: `${id}-avancado` },
+      privacidade: def.privacidade,
+    });
+  }
+  const alvos = ids.map((provedor) => ({ provedor }));
+  return {
+    desligada: ids.length === 0,
+    provedores,
+    rotas: { simples: alvos, intermediaria: alvos, complexa: alvos },
+    rotasTarefa: {},
+    privacidade: "padrao",
+    confiaveis: null,
+    timeoutMs: 5000,
+    maxTentativas: 3,
+    limiteDiario: 150,
+    limiteDiarioComplexa: 30,
+    limiteMentorGratis: 20,
+    limiteMentorPlus: 200,
+    ...extra,
+  };
 }
 
 export interface AppTeste {
@@ -38,11 +85,14 @@ export interface AppTeste {
   logs: RegistroInteracao[];
 }
 
-export async function criarAppTeste(opcoes: { ia?: boolean; limite?: boolean; cota?: () => Promise<boolean> } = {}): Promise<AppTeste> {
-  const env = carregarEnv({ ...process.env, NODE_ENV: "test", RATE_LIMIT: opcoes.limite ? "on" : "off", DATABASE_URL: "file:./test-suite.db", AI_PROVIDER: "none", APP_ORIGIN: "http://localhost:5173" });
-  const fake = opcoes.ia ? new ProvedorFake() : null;
+export async function criarAppTeste(
+  opcoes: { ia?: boolean; limite?: boolean; uso?: () => Promise<{ total: number; complexas: number }> } = {},
+): Promise<AppTeste> {
+  const env = carregarEnv({ ...process.env, NODE_ENV: "test", RATE_LIMIT: opcoes.limite ? "on" : "off", DATABASE_URL: "file:./test-suite.db", APP_ORIGIN: "http://localhost:5173" });
+  const fake = opcoes.ia ? new ProvedorFake("groq") : null;
   const logs: RegistroInteracao[] = [];
-  const ia = new ServicoIA(fake, { ...env, AI_MODEL: "fake-1" }, (r) => void logs.push(r), {}, opcoes.cota);
+  const cfg = configTeste(fake ? ["groq"] : []);
+  const ia = new ServicoIA(cfg, new Map(fake ? [["groq", fake]] : []), { registrar: (r) => void logs.push(r), usoHoje: opcoes.uso });
   const app = await criarApp({ env, db, ia });
   await app.ready();
   return { app, fake, logs };

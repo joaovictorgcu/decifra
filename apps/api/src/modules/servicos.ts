@@ -20,7 +20,7 @@ export async function contarUso(db: Db, userId: string, tipo: "raio_x" | "mentor
 }
 
 export function limiteMentor(ctx: Contexto, u: User): number {
-  return u.plano === "plus" ? ctx.env.AI_MENTOR_LIMITE_PLUS : ctx.env.AI_MENTOR_LIMITE_GRATIS;
+  return u.plano === "plus" ? ctx.ia.cfg.limiteMentorPlus : ctx.ia.cfg.limiteMentorGratis;
 }
 
 export async function montarSessao(ctx: Contexto, u: User): Promise<Sessao> {
@@ -38,7 +38,7 @@ export async function montarSessao(ctx: Contexto, u: User): Promise<Sessao> {
       mentorHoje,
       limiteMentor: limiteMentor(ctx, u),
     },
-    ia: { ativa: ctx.ia.ativa, provedor: ctx.ia.nomeProvedor },
+    ia: { ativa: ctx.ia.ativa, provedores: ctx.ia.rotulos, mentor: ctx.ia.disponivelPara("mentor"), importacao: ctx.ia.disponivelPara("importar_cv") },
   };
 }
 
@@ -47,7 +47,10 @@ export async function evidenciasDe(db: Db, userId: string): Promise<EvidenciaDom
   return evs.map(evidenciaDom);
 }
 
-export async function vagasDe(db: Db, userId: string): Promise<(VagaDom & { empresa: string; fonte: string; criadaEm: Date; companyJobId: string | null })[]> {
+export async function vagasDe(
+  db: Db,
+  userId: string,
+): Promise<(VagaDom & { empresa: string; fonte: string; iaDescricao: string | null; criadaEm: Date; companyJobId: string | null })[]> {
   const vagas = await db.job.findMany({ where: { userId }, include: { requisitos: true }, orderBy: { createdAt: "desc" } });
-  return vagas.map((v) => ({ ...vagaDom(v), empresa: v.empresa, fonte: v.fonte, criadaEm: v.createdAt, companyJobId: v.companyJobId }));
+  return vagas.map((v) => ({ ...vagaDom(v), empresa: v.empresa, fonte: v.fonte, iaDescricao: v.iaDescricao, criadaEm: v.createdAt, companyJobId: v.companyJobId }));
 }

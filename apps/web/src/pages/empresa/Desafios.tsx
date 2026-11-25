@@ -1,8 +1,10 @@
 import { TRIAGENS, type Triagem } from "@decifra/shared";
+import type { Desafio } from "@decifra/shared";
 import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api/cliente";
 import { useAcao, useDesafiosEmpresa } from "../../api/consultas";
+import { Confirmar } from "../../components/Confirmar";
 import { Botao, Cabecalho, Campo, CampoArea, CampoTexto, ErroForm, Esqueleto, Falha, Vazio, erroDoCampo } from "../../components/ui";
 import { avisar } from "../../lib/avisos";
 import { dataBR, hojeISO, somarDias } from "../../lib/formato";
@@ -13,6 +15,8 @@ export function DesafiosEmpresa() {
   const q = useDesafiosEmpresa();
   const [f, setF] = useState(VAZIO);
   const criar = useAcao((d: typeof VAZIO) => api.post("/empresa/desafios", d));
+  const [alvo, setAlvo] = useState<Desafio | null>(null);
+  const apagar = useAcao((id: string) => api.del(`/empresa/desafios/${id}`));
   const triar = useAcao((d: { id: string; triagem: Triagem }) => api.patch(`/empresa/entregas/${d.id}`, { triagem: d.triagem }));
 
   function enviar(e: FormEvent) {
@@ -55,6 +59,11 @@ export function DesafiosEmpresa() {
             <p>
               <strong>{d.entregas?.length ?? 0} entrega(s)</strong>
             </p>
+            <div>
+              <button type="button" className="link perigo" onClick={() => setAlvo(d)} aria-label={`Excluir desafio ${d.titulo}`}>
+                Excluir desafio
+              </button>
+            </div>
             {!!d.entregas?.length && (
               <ul className="lista-d">
                 {d.entregas.map((x) => (
@@ -93,6 +102,15 @@ export function DesafiosEmpresa() {
           </article>
         ))}
       </section>
+      <Confirmar
+        aberto={!!alvo}
+        titulo={`Excluir “${alvo?.titulo ?? ""}”?`}
+        carregando={apagar.isPending}
+        aoFechar={() => setAlvo(null)}
+        aoConfirmar={() => alvo && apagar.mutate(alvo.id, { onSuccess: () => (setAlvo(null), avisar("Desafio excluído")), onError: (e) => avisar(e.message, "erro") })}
+      >
+        <p>As entregas deixam de aparecer aqui. As evidências que os candidatos registraram continuam com eles.</p>
+      </Confirmar>
     </>
   );
 }

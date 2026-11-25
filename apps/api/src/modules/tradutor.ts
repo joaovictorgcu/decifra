@@ -1,6 +1,6 @@
 import { AREAS, traducaoParaEvidenciaSchema, traducaoSchema, type AreaId, type Fonte } from "@decifra/shared";
 import type { FastifyInstance } from "fastify";
-import { traduzirIA } from "../ai/tarefas";
+import { descreverMeta, traduzirIA } from "../ai/tarefas";
 import { traduzirPorRegras } from "../domain/regras";
 import { ErroApp, validar } from "../lib/erros";
 import { gravarLista } from "../lib/json";
@@ -19,7 +19,7 @@ export async function rotasTradutor(app: FastifyInstance) {
     const area = AREAS[perfil.destino as AreaId]?.nome ?? "tecnologia";
     const viaIA = await traduzirIA(ia, u.id, d.entrada, area);
     const fonte: Fonte = viaIA ? "ia" : "regras";
-    return { itens: viaIA ?? traduzirPorRegras(d.entrada), fonte };
+    return { itens: viaIA?.valor ?? traduzirPorRegras(d.entrada), fonte, ia: viaIA ? descreverMeta(viaIA.meta) : null };
   });
 
   /** Salva uma tradução como evidência "Caso da carreira anterior", para a pessoa completar. */

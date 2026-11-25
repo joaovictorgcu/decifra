@@ -10,7 +10,7 @@ import {
   type Triagem,
 } from "@decifra/shared";
 import type { FastifyInstance } from "fastify";
-import { extrairRequisitosIA } from "../ai/tarefas";
+import { descreverMeta, extrairRequisitosIA } from "../ai/tarefas";
 import { extrairRequisitos } from "../domain/extrair";
 import { grau } from "../domain/raio";
 import { norm } from "../domain/texto";
@@ -28,9 +28,9 @@ export async function rotasEmpresa(app: FastifyInstance) {
     const u = exigirEmpresa(req);
     const d = validar(vagaEmpresaAnaliseSchema, req.body);
     const viaIA = await extrairRequisitosIA(ia, u.id, d.texto, []);
-    const reqs = viaIA ?? extrairRequisitos(d.texto);
+    const reqs = viaIA?.valor ?? extrairRequisitos(d.texto);
     if (!reqs.length) throw new ErroApp(422, "sem_requisitos", "Não encontrei requisitos nesta descrição.", "texto");
-    return { titulo: d.titulo, texto: d.texto, fonte: viaIA ? "ia" : "regras", requisitos: reqs };
+    return { titulo: d.titulo, texto: d.texto, fonte: viaIA ? "ia" : "regras", ia: viaIA ? descreverMeta(viaIA.meta) : null, requisitos: reqs };
   });
 
   app.post("/empresa/vagas", async (req, reply) => {

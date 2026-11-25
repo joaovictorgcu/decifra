@@ -15,8 +15,8 @@ Base: `/api`. JSON em todas as rotas (exceto upload em `multipart/form-data` e o
 | 404 `nao_encontrado` | Não existe ou não pertence a você |
 | 409 | Conflito (e-mail em uso, candidatura duplicada, entrega duplicada, prazo encerrado) |
 | 413 / 415 / 422 | Arquivo grande, tipo não suportado, PDF ilegível, vaga sem requisitos |
-| 429 `limite` / `limite_mentor` / `ia_limite` | Rate limit, cota diária do Mentor ou da IA |
-| 503 `ia_desativada` | Recurso que depende de IA sem provedor configurado |
+| 429 `limite` / `limite_mentor` / `ia_cota` / `ia_limite` | Rate limit, cota do Mentor, cota diária de IA do usuário, limite do provedor gratuito |
+| 503 `ia_desativada` / `ia_privacidade` / `ia_indisponivel` | Sem provedor configurado; nenhum permitido pela política de privacidade; todos falharam ou estão em pausa |
 
 ## Autenticação e conta
 
@@ -65,16 +65,22 @@ Base: `/api`. JSON em todas as rotas (exceto upload em `multipart/form-data` e o
 | POST | `/desafios/:id/entregas` | `{ link }` → entrega + evidência |
 | GET | `/mentor/conversas` | Conversas do Mentor |
 | GET / DELETE | `/mentor/conversas/:id` | Mensagens / excluir |
+| GET | `/mentor/sugestoes` | Perguntas iniciais pela etapa e pelos dados da pessoa |
 | POST | `/mentor/mensagens` | `{ conversaId?, mensagem }` → **SSE** |
 
 ### Stream do Mentor (SSE)
 
 ```
-event: inicio   data: {"conversaId":"...","titulo":"..."}
+event: inicio   data: {}
+event: meta     data: {"ia":"Groq · gpt-oss-120b"}  (quando o 1º trecho chega)
 event: trecho   data: {"t":"texto parcial"}        (vários)
-event: fim      data: {"mensagemId":"..."}
-event: erro     data: {"erro":"mensagem"}           (em caso de falha)
+event: fim      data: {"conversaId":"...","titulo":"...","mensagem":{...MensagemMentor}}
+event: erro     data: {"erro":"mensagem","codigo":"ia_limite"}   (em caso de falha)
 ```
+
+A troca só é gravada quando há resposta. Se o cliente fechar a conexão (botão "Parar"), o trecho já gerado é gravado com `interrompida: true`.
+
+Resultados com IA trazem `fonte` (`ia` | `regras` | `empresa`) e `ia` (provedor e modelo, ex.: `"Groq · gpt-oss-120b"`), em vagas, traduções, histórias, feedback e importação.
 
 ## Empresa
 

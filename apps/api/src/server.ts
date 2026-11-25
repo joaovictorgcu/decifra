@@ -1,4 +1,5 @@
 import { criarApp } from "./app";
+import { resumoConfig } from "./ai/config";
 import { criarContexto } from "./contexto";
 
 async function main() {
@@ -15,7 +16,7 @@ async function main() {
   process.on("SIGTERM", () => void encerrar("SIGTERM"));
 
   await app.listen({ host: ctx.env.HOST, port: ctx.env.PORT });
-  app.log.info({ ia: ctx.ia.nomeProvedor, modelo: ctx.ia.ativa ? ctx.ia.modeloDe("mentor") : null }, "DECIFRA API pronta");
+  app.log.info(resumoConfig(ctx.ia.cfg), "DECIFRA API pronta");
 }
 
 main().catch((e) => {

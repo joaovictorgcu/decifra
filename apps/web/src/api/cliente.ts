@@ -1,4 +1,4 @@
-import type { ErroApi } from "@decifra/shared";
+import type { ErroApi, MensagemMentor } from "@decifra/shared";
 
 /** Erro de API com mensagem pronta para o usuário e código estável. */
 export class ErroRequisicao extends Error {
@@ -61,48 +61,59 @@ export const api = {
 };
 
 export interface EventosMentor {
-  inicio?: (d: { conversaId: string; titulo: string }) => void;
+  /** Provedor e modelo que estão respondendo (ex.: "Groq · gpt-oss-120b"). */
+  meta?: (ia: string) => void;
   trecho: (t: string) => void;
-  fim?: (d: { mensagemId: string }) => void;
-  erro?: (mensagem: string) => void;
+  fim?: (d: { conversaId: string; titulo: string; mensagem: MensagemMentor }) => void;
+  erro?: (mensagem: string, codigo?: string) => void;
 }
 
 /** Envia uma mensagem ao Mentor e lê a resposta em streaming (Server-Sent Events via fetch). */
 export async function conversarComMentor(corpo: { conversaId?: string; mensagem: string }, ev: EventosMentor, signal?: AbortSignal) {
-  const r = await fetch("/api/mentor/mensagens", {
-    method: "POST",
-    credentials: "same-origin",
-    headers: { ...CABECALHOS, "content-type": "application/json" },
-    body: JSON.stringify(corpo),
-    signal,
-  }).catch(() => {
+  let r: Response;
+  try {
+    r = await fetch("/api/mentor/mensagens", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { ...CABECALHOS, "content-type": "application/json" },
+      body: JSON.stringify(corpo),
+      signal,
+    });
+  } catch (e) {
+    if (signal?.aborted) return;
     throw new ErroRequisicao(0, "rede", "Sem conexão com o servidor.");
-  });
+  }
   if (!r.ok || !r.body) {
     await tratar(r);
     return;
   }
   const leitor = r.body.pipeThrough(new TextDecoderStream()).getReader();
   let buffer = "";
-  for (;;) {
-    const { value, done } = await leitor.read();
-    if (done) break;
-    buffer += value;
-    let fimBloco: number;
-    while ((fimBloco = buffer.indexOf("\n\n")) >= 0) {
-      const bloco = buffer.slice(0, fimBloco);
-      buffer = buffer.slice(fimBloco + 2);
-      let evento = "message";
-      let dados = "";
-      for (const linha of bloco.split("\n")) {
-        if (linha.startsWith("event: ")) evento = linha.slice(7);
-        else if (linha.startsWith("data: ")) dados += linha.slice(6);
+  try {
+    for (;;) {
+      const { value, done } = await leitor.read();
+      if (done) break;
+      buffer += value;
+      let fimBloco: number;
+      while ((fimBloco = buffer.indexOf("\n\n")) >= 0) {
+        const bloco = buffer.slice(0, fimBloco);
+        buffer = buffer.slice(fimBloco + 2);
+        let evento = "message";
+        let dados = "";
+        for (const linha of bloco.split("\n")) {
+          if (linha.startsWith("event: ")) evento = linha.slice(7);
+          else if (linha.startsWith("data: ")) dados += linha.slice(6);
+        }
+        const json = dados ? JSON.parse(dados) : {};
+        if (evento === "meta") ev.meta?.(json.ia);
+        else if (evento === "trecho") ev.trecho(json.t);
+        else if (evento === "fim") ev.fim?.(json);
+        else if (evento === "erro") ev.erro?.(json.erro, json.codigo);
       }
-      const json = dados ? JSON.parse(dados) : {};
-      if (evento === "inicio") ev.inicio?.(json);
-      else if (evento === "trecho") ev.trecho(json.t);
-      else if (evento === "fim") ev.fim?.(json);
-      else if (evento === "erro") ev.erro?.(json.erro);
     }
+  } catch (e) {
+    // Cancelado pela pessoa: o servidor guarda o que já foi gerado.
+    if (signal?.aborted) return;
+    throw new ErroRequisicao(0, "rede", "A conexão caiu durante a resposta.");
   }
 }

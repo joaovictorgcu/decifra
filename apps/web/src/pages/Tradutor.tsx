@@ -1,4 +1,4 @@
-import { AREAS, type AreaId, type Evidencia, type Fonte, type Traducao } from "@decifra/shared";
+import { AREAS, type AreaId, type Evidencia, type ResultadoTraducao, type Traducao } from "@decifra/shared";
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api/cliente";
@@ -12,7 +12,7 @@ export function Tradutor() {
   const s = useSessaoAtiva();
   const nav = useNavigate();
   const [entrada, setEntrada] = useState("");
-  const traduzir = useAcao((t: string) => api.post<{ itens: Traducao[]; fonte: Fonte }>("/tradutor", { entrada: t }));
+  const traduzir = useAcao((t: string) => api.post<ResultadoTraducao>("/tradutor", { entrada: t }));
   const salvar = useAcao((t: Traducao) => api.post<Evidencia>("/tradutor/evidencia", { entrada: t.entrada, competencias: t.competencias }));
   const area = AREAS[s.perfil!.destino as AreaId]?.nome ?? "a nova área";
 
@@ -44,7 +44,7 @@ export function Tradutor() {
       </form>
       <div className="pilha" aria-live="polite">
         {traduzir.isPending && <Carregando texto="Traduzindo sua experiência…" />}
-        {traduzir.data && <OrigemResultado fonte={traduzir.data.fonte} />}
+        {traduzir.data && <OrigemResultado fonte={traduzir.data.fonte} ia={traduzir.data.ia} />}
         {traduzir.data?.itens.map((t, i) => (
           <article className="cartao" key={i}>
             <h2>{t.entrada}</h2>

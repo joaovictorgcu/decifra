@@ -11,6 +11,9 @@ beforeEach(async () => {
   tIA ??= await criarAppTeste({ ia: true });
   tIA.fake!.respostas = {};
   tIA.fake!.falhar = null;
+  tIA.fake!.falharAposTrechos = null;
+  tIA.fake!.atrasoMs = 0;
+  tIA.fake!.textoChat = "Olá! Comece pelo mini-projeto de SQL.";
   tIA.fake!.pedidos = [];
   tIA.logs.length = 0;
 });
@@ -275,7 +278,7 @@ describe("tradutor e entrevista", () => {
 
 describe("cota diária de IA", () => {
   it("acima do teto, tarefas usam o motor de regras e a importação responde 429", async () => {
-    const semCota = await criarAppTeste({ ia: true, cota: async () => false });
+    const semCota = await criarAppTeste({ ia: true, uso: async () => ({ total: 999, complexas: 0 }) });
     const c = await novoCandidato(semCota.app, "cota@teste.dev");
     semCota.fake!.respostas.requisitos_da_vaga = { requisitos: [{ requisito: "SQL", curto: "SQL", tipo: "tecnica", kind: "", obrig: true, evId: "" }] };
     const r = (await c.post("/api/vagas", { texto: VAGA_DADOS })).json();
@@ -303,10 +306,14 @@ describe("Mentor (IA conversacional)", () => {
     expect(r.body).toContain("event: trecho");
     expect(r.body).toContain("event: fim");
     expect(tIA.fake!.pedidos[0]?.sistema).toContain("Curso de SQL");
+    expect(r.body).toContain("event: meta");
+    expect(r.body).toContain("Groq");
     const conversas = (await c.get("/api/mentor/conversas")).json().itens;
     expect(conversas).toHaveLength(1);
     const det = (await c.get(`/api/mentor/conversas/${conversas[0].id}`)).json();
     expect(det.mensagens.map((m: { papel: string }) => m.papel)).toEqual(["user", "assistant"]);
+    expect(det.mensagens[1].ia).toContain("Groq");
+    expect((await c.get("/api/auth/sessao")).json().uso.mentorHoje).toBe(1);
     const outra = await novoCandidato(tIA.app, "bia@teste.dev");
     expect((await outra.get(`/api/mentor/conversas/${conversas[0].id}`)).statusCode).toBe(404);
   });
@@ -316,6 +323,31 @@ describe("Mentor (IA conversacional)", () => {
     tIA.fake!.falhar = new ErroIA("falha", "x");
     const r = await c.post("/api/mentor/mensagens", { mensagem: "Oi" });
     expect(r.body).toContain("event: erro");
+    // Nada é gravado e a cota não é consumida quando não há resposta.
+    expect((await c.get("/api/mentor/conversas")).json().itens).toHaveLength(0);
+    expect((await c.get("/api/auth/sessao")).json().uso.mentorHoje).toBe(0);
+  });
+
+  it("guarda a resposta parcial marcada quando o stream cai no meio", async () => {
+    const c = await novoCandidato(tIA.app);
+    tIA.fake!.textoChat = "um dois tres quatro cinco seis";
+    tIA.fake!.falharAposTrechos = 3;
+    tIA.fake!.falhar = new ErroIA("falha", "queda");
+    const r = await c.post("/api/mentor/mensagens", { mensagem: "Me ajude com meu plano" });
+    expect(r.body).toContain("event: erro");
+    expect(r.body).toContain("interrompida");
+    const conv = (await c.get("/api/mentor/conversas")).json().itens[0];
+    const det = (await c.get(`/api/mentor/conversas/${conv.id}`)).json();
+    expect(det.mensagens[1]).toMatchObject({ papel: "assistant", interrompida: true, conteudo: "um dois tres " });
+    tIA.fake!.falharAposTrechos = null;
+    tIA.fake!.textoChat = "Olá! Comece pelo mini-projeto de SQL.";
+  });
+
+  it("sugere perguntas conforme a etapa e os dados da pessoa", async () => {
+    const c = await novoCandidato(tIA.app);
+    const s = (await c.get("/api/mentor/sugestoes")).json().itens;
+    expect(s.length).toBeGreaterThan(1);
+    expect(s[0]).toContain("retorno das empresas");
   });
 });
 

@@ -92,6 +92,7 @@ model Job {
   empresa      String           @default("")
   texto        String
   fonte        String // ia | regras | empresa
+  iaDescricao  String? // provedor e modelo que extraíram os requisitos (quando fonte = ia)
   companyJobId String?
   createdAt    DateTime         @default(now())
   user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -162,6 +163,7 @@ model InterviewStory {
   acao       String
   resultado  String
   fonte      String
+  iaDescricao String?
   createdAt  DateTime @default(now())
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -195,6 +197,8 @@ model Message {
   conversationId String
   papel          String // user | assistant
   conteudo       String
+  iaDescricao    String? // provedor e modelo que responderam
+  interrompida   Boolean      @default(false)
   createdAt      DateTime     @default(now())
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
@@ -266,9 +270,11 @@ model AiInteraction {
   id           String   @id @default(cuid())
   userId       String?
   tarefa       String // extrair_requisitos | traduzir | historia | feedback | mentor | importar_cv
+  nivel        String   @default("") // simples | intermediaria | complexa
+  tentativa    Int      @default(1)
   provedor     String
   modelo       String
-  status       String // ok | invalido | erro | recusa
+  status       String // ok | invalido | erro | recusa | limite | cancelado
   latenciaMs   Int
   tokensEntrada Int     @default(0)
   tokensSaida  Int      @default(0)
