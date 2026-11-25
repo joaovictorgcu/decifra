@@ -1,0 +1,311 @@
+// ARQUIVO GERADO por scripts/gerar-schema-postgres.mjs. Não edite: altere prisma/schema.prisma.
+// Modelo de dados do DECIFRA (fonte única).
+// Desenvolvimento: SQLite (zero configuração). Produção/Docker: PostgreSQL.
+// O schema de PostgreSQL (prisma/postgres/schema.prisma) é GERADO a partir
+// deste arquivo: depois de mudar um modelo, rode `npm run schema:postgres -w @decifra/api`
+// e crie as migrações dos dois bancos (ver docs/MODELO_DE_DADOS.md).
+// Listas são guardadas como JSON em texto para o schema ser igual nos dois bancos.
+// A URL do banco fica em prisma.config.ts (Prisma 7).
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../../generated/prisma"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  nome         String
+  papel        String // candidato | empresa
+  plano        String   @default("gratis") // gratis | plus
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  sessions      Session[]
+  perfil        CandidateProfile?
+  evidencias    Evidence[]
+  vagas         Job[]
+  tarefas       Task[]
+  candidaturas  Application[]
+  historias     InterviewStory[]
+  usos          UsageEvent[]
+  conversas     Conversation[]
+  vagasEmpresa  CompanyJob[]
+  desafios      Challenge[]
+  entregas      Submission[]
+  interacoesIA  AiInteraction[]
+  feedbacks     Feedback[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  userAgent String   @default("")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model CandidateProfile {
+  userId     String   @id
+  destino    String
+  origem     String
+  situacao   String
+  tempo      String
+  candidatou String
+  atrapalha  String // JSON string[]
+  etapa      String
+  publico    Boolean  @default(false)
+  slug       String   @unique
+  updatedAt  DateTime @updatedAt
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Evidence {
+  id           String   @id @default(cuid())
+  userId       String
+  titulo       String
+  tipo         String
+  concluido    Boolean  @default(false)
+  link         String   @default("")
+  competencias String   @default("[]") // JSON string[]
+  problema     String   @default("")
+  fez          String   @default("")
+  ferramentas  String   @default("")
+  resultado    String   @default("")
+  origem       String   @default("manual") // manual | tradutor | mini | desafio | importacao
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Job {
+  id           String           @id @default(cuid())
+  userId       String
+  titulo       String
+  empresa      String           @default("")
+  texto        String
+  fonte        String // ia | regras | empresa
+  iaDescricao  String? // provedor e modelo que extraíram os requisitos (quando fonte = ia)
+  ajustada     Boolean          @default(false) // a pessoa corrigiu requisitos manualmente
+  companyJobId String?
+  createdAt    DateTime         @default(now())
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  companyJob   CompanyJob?      @relation(fields: [companyJobId], references: [id], onDelete: SetNull)
+  requisitos   JobRequirement[]
+  tarefas      Task[]
+  candidatura  Application?
+
+  @@index([userId, createdAt])
+}
+
+model JobRequirement {
+  id        String  @id @default(cuid())
+  jobId     String
+  ordem     Int
+  requisito String
+  curto     String
+  tipo      String // tecnica | formal | comportamental
+  kind      String? // tempo | diploma | certificacao
+  obrig     Boolean
+  evId      String?
+  aceita    String  @default("") // decisão da empresa sobre exigência formal
+  job       Job     @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId])
+}
+
+model Task {
+  id        String   @id @default(cuid())
+  userId    String
+  jobId     String?
+  titulo    String
+  prazo     String // AAAA-MM-DD
+  status    String   @default("a fazer")
+  tipo      String // mini | doc | verificar | mentor
+  comp      String   @default("")
+  evId      String?
+  virou     Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  job       Job?     @relation(fields: [jobId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+}
+
+model Application {
+  id        String   @id @default(cuid())
+  userId    String
+  jobId     String   @unique
+  etapa     String   @default("Candidatei")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model InterviewStory {
+  id         String   @id @default(cuid())
+  userId     String
+  pergunta   String
+  evidenceId String?
+  evidencia  String
+  situacao   String
+  tarefa     String
+  acao       String
+  resultado  String
+  fonte      String
+  iaDescricao String?
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model UsageEvent {
+  id        String   @id @default(cuid())
+  userId    String
+  tipo      String // raio_x | mentor
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, tipo, createdAt])
+}
+
+model Conversation {
+  id        String    @id @default(cuid())
+  userId    String
+  titulo    String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mensagens Message[]
+
+  @@index([userId, updatedAt])
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  papel          String // user | assistant
+  conteudo       String
+  iaDescricao    String? // provedor e modelo que responderam
+  interrompida   Boolean      @default(false)
+  acoes          String? // JSON: ações sugeridas pelo Mentor (criar tarefa/mini-projeto), executadas só com confirmação
+  createdAt      DateTime     @default(now())
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+}
+
+model CompanyJob {
+  id         String                  @id @default(cuid())
+  companyId  String
+  titulo     String
+  texto      String
+  selo       Boolean                 @default(false)
+  publicada  Boolean                 @default(true)
+  createdAt  DateTime                @default(now())
+  company    User                    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  requisitos CompanyJobRequirement[]
+  vagasCand  Job[]
+
+  @@index([companyId])
+  @@index([publicada, createdAt])
+}
+
+model CompanyJobRequirement {
+  id           String     @id @default(cuid())
+  companyJobId String
+  ordem        Int
+  requisito    String
+  curto        String
+  tipo         String
+  kind         String?
+  obrig        Boolean
+  aceita       String     @default("")
+  companyJob   CompanyJob @relation(fields: [companyJobId], references: [id], onDelete: Cascade)
+
+  @@index([companyJobId])
+}
+
+model Challenge {
+  id          String       @id @default(cuid())
+  companyId   String
+  titulo      String
+  vaga        String       @default("")
+  competencia String       @default("")
+  descricao   String
+  prazo       String // AAAA-MM-DD
+  createdAt   DateTime     @default(now())
+  company     User         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  entregas    Submission[]
+
+  @@index([companyId])
+  @@index([prazo])
+}
+
+model Submission {
+  id          String    @id @default(cuid())
+  challengeId String
+  candidateId String
+  link        String
+  triagem     String    @default("")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  challenge   Challenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  candidate   User      @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@unique([challengeId, candidateId])
+}
+
+model AiInteraction {
+  id           String   @id @default(cuid())
+  userId       String?
+  tarefa       String // extrair_requisitos | traduzir | historia | feedback | mentor | importar_cv
+  nivel        String   @default("") // simples | intermediaria | complexa
+  tentativa    Int      @default(1)
+  provedor     String
+  modelo       String
+  status       String // ok | invalido | erro | recusa | limite | cancelado
+  latenciaMs   Int
+  tokensEntrada Int     @default(0)
+  tokensSaida  Int      @default(0)
+  erro         String   @default("")
+  createdAt    DateTime @default(now())
+  user         User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([tarefa, createdAt])
+  @@index([userId, createdAt])
+}
+
+/// Feedback de validação dado pela própria pessoa dentro do produto
+/// (instrumento das hipóteses do Status Report; ver docs/negocio/04-experimentacao-e-validacao.md).
+model Feedback {
+  id         String   @id @default(cuid())
+  userId     String
+  alvo       String // raio | mentor
+  refId      String // id da vaga (Raio-X) ou da mensagem do Mentor
+  util       Boolean
+  comentario String   @default("")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, alvo, refId])
+  @@index([alvo, createdAt])
+}

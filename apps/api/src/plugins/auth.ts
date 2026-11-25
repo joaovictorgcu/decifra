@@ -1,4 +1,4 @@
-import type { User } from "@prisma/client";
+import type { User } from "../../generated/prisma/client";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import fp from "fastify-plugin";
 import { ErroApp } from "../lib/erros";

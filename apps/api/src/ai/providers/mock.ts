@@ -30,7 +30,11 @@ export class ProvedorMock implements ProvedorIA {
   async conversar(req: PedidoConversa, aoReceber: (t: string) => void): Promise<RespostaIA<string>> {
     const ultima = req.mensagens.at(-1)?.conteudo ?? "";
     if (ultima.includes("#falhar")) throw new ErroIA("falha", "mock: falha simulada");
-    const texto = `Resposta de teste do Mentor para: **${ultima.replace(/#\w+/g, "").trim().slice(0, 80)}**\n\n- Primeiro passo: revise suas evidências.\n- Depois: faça um Raio-X.`;
+    const base = `Resposta de teste do Mentor para: **${ultima.replace(/#\w+/g, "").trim().slice(0, 80)}**\n\n- Primeiro passo: revise suas evidências.\n- Depois: faça um Raio-X.`;
+    // "#acoes" faz o simulador sugerir ações, como um modelo real faria.
+    const texto = ultima.includes("#acoes")
+      ? `${base}\n<acoes>[{"tipo":"tarefa","titulo":"Documentar o painel de vendas com problema, dados e resultado","prazoDias":5},{"tipo":"mini","competencia":"Power BI"}]</acoes>`
+      : base;
     const atraso = ultima.includes("#lento") ? 250 : 15;
     const partes = texto.match(/.{1,12}/gs) ?? [];
     for (const [i, parte] of partes.entries()) {

@@ -66,6 +66,11 @@ Base: `/api`. JSON em todas as rotas (exceto upload em `multipart/form-data` e o
 | GET | `/mentor/conversas` | Conversas do Mentor |
 | GET / DELETE | `/mentor/conversas/:id` | Mensagens / excluir |
 | GET | `/mentor/sugestoes` | Perguntas iniciais pela etapa e pelos dados da pessoa |
+| POST | `/mentor/acoes` | `{ mensagemId, indice }`: adiciona ao Plano uma ação sugerida pelo Mentor (uma vez só) |
+| PATCH / DELETE | `/vagas/:id/requisitos/:reqId` | `{ obrig }` muda o peso / remove o requisito (vagas da empresa não podem ser alteradas) |
+| POST | `/vagas/:id/requisitos` | `{ nome, tipo, kind?, obrig }` adiciona requisito que ficou de fora |
+| POST | `/vagas/:id/reanalisar` | Lê a vaga de novo com IA (não consome Raio-X do mês) |
+| POST | `/feedback` | `{ alvo: "raio" \| "mentor", refId, util, comentario? }` (instrumento de validação) |
 | POST | `/mentor/mensagens` | `{ conversaId?, mensagem }` → **SSE** |
 
 ### Stream do Mentor (SSE)

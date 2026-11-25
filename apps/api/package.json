@@ -7,13 +7,17 @@
     "dev": "tsx watch --env-file-if-exists=../../.env src/server.ts",
     "build": "prisma generate && tsup",
     "start": "node --env-file-if-exists=../../.env dist/server.js",
-    "db:migrate": "dotenv -e ../../.env -- prisma migrate dev",
-    "db:deploy": "dotenv -e ../../.env -- prisma migrate deploy",
-    "db:studio": "dotenv -e ../../.env -- prisma studio",
+    "db:migrate": "prisma migrate dev && prisma generate",
+    "db:deploy": "prisma migrate deploy",
+    "db:studio": "prisma studio",
     "admin": "tsx --env-file-if-exists=../../.env src/scripts/admin.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
-    "avaliar:ia": "tsx --env-file-if-exists=../../.env src/scripts/avaliar-ia.ts"
+    "avaliar:ia": "tsx --env-file-if-exists=../../.env src/scripts/avaliar-ia.ts",
+    "generate": "prisma generate",
+    "postinstall": "prisma generate",
+    "schema:postgres": "node scripts/gerar-schema-postgres.mjs",
+    "test:postgres": "node scripts/testar-postgres.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.14.0",
@@ -23,20 +27,23 @@
     "@fastify/multipart": "^10.1.9",
     "@fastify/rate-limit": "^11.3.0",
     "@fastify/static": "^10.1.12",
-    "@prisma/client": "^6.19.3",
+    "@prisma/adapter-better-sqlite3": "^7.10.1",
+    "@prisma/adapter-pg": "^7.10.1",
+    "@prisma/client": "^7.10.1",
+    "dotenv": "^17.2.3",
     "fastify": "^5.12.8",
     "fastify-plugin": "^5.1.0",
     "openai": "^7.64.0",
+    "prisma": "^7.10.1",
     "unpdf": "^2.2.2",
     "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/node": "^22.18.0",
-    "dotenv-cli": "^10.0.0",
     "pino-pretty": "^13.1.2",
-    "prisma": "^6.19.3",
     "tsup": "^8.5.0",
     "tsx": "^4.20.6",
-    "vitest": "^5.1.1"
+    "vitest": "^5.1.1",
+    "embedded-postgres": "18.7.0-beta.19"
   }
 }

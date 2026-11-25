@@ -1,14 +1,17 @@
 import type { FastifyInstance, LightMyRequestResponse } from "fastify";
-import { PrismaClient } from "@prisma/client";
+import { criarDb } from "../src/lib/db";
 import { criarApp } from "../src/app";
 import { CATALOGO } from "../src/ai/catalogo";
 import type { ConfigIA, ProvedorConfigurado } from "../src/ai/config";
+import { Disjuntor } from "../src/ai/disjuntor";
 import { ServicoIA, type RegistroInteracao } from "../src/ai/servico";
 import { ErroIA, type IdProvedor, type PedidoConversa, type PedidoJSON, type ProvedorIA, type RespostaIA } from "../src/ai/tipos";
 import { carregarEnv } from "../src/config/env";
 
-process.env.DATABASE_URL = "file:./test-suite.db";
-export const db = new PrismaClient();
+// SQLite por padrão; o teste de PostgreSQL define TEST_DATABASE_URL (scripts/testar-postgres.mjs).
+const URL_TESTE = process.env.TEST_DATABASE_URL ?? "file:./prisma/test-suite.db";
+process.env.DATABASE_URL = URL_TESTE;
+export const db = criarDb(URL_TESTE);
 
 /** Provedor de IA fake: responde por nome de schema; permite simular falhas e streaming. */
 export class ProvedorFake implements ProvedorIA {
@@ -83,19 +86,21 @@ export interface AppTeste {
   app: FastifyInstance;
   fake: ProvedorFake | null;
   logs: RegistroInteracao[];
+  disjuntor: Disjuntor;
 }
 
 export async function criarAppTeste(
   opcoes: { ia?: boolean; limite?: boolean; uso?: () => Promise<{ total: number; complexas: number }> } = {},
 ): Promise<AppTeste> {
-  const env = carregarEnv({ ...process.env, NODE_ENV: "test", RATE_LIMIT: opcoes.limite ? "on" : "off", DATABASE_URL: "file:./test-suite.db", APP_ORIGIN: "http://localhost:5173" });
+  const env = carregarEnv({ ...process.env, NODE_ENV: "test", RATE_LIMIT: opcoes.limite ? "on" : "off", DATABASE_URL: URL_TESTE, APP_ORIGIN: "http://localhost:5173" });
   const fake = opcoes.ia ? new ProvedorFake("groq") : null;
   const logs: RegistroInteracao[] = [];
   const cfg = configTeste(fake ? ["groq"] : []);
-  const ia = new ServicoIA(cfg, new Map(fake ? [["groq", fake]] : []), { registrar: (r) => void logs.push(r), usoHoje: opcoes.uso });
+  const disjuntor = new Disjuntor();
+  const ia = new ServicoIA(cfg, new Map(fake ? [["groq", fake]] : []), { registrar: (r) => void logs.push(r), usoHoje: opcoes.uso, disjuntor });
   const app = await criarApp({ env, db, ia });
   await app.ready();
-  return { app, fake, logs };
+  return { app, fake, logs, disjuntor };
 }
 
 export async function limparBanco() {

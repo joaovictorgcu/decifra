@@ -1,16 +1,19 @@
-// Modelo de dados do DECIFRA.
-// Banco padrão: SQLite (zero configuração para rodar localmente).
-// Para produção com PostgreSQL, troque o provider e gere novas migrações
-// (veja docs/DATA_MODEL.md). Listas são guardadas como JSON em texto para
-// manter o schema portável entre os dois bancos.
+// Modelo de dados do DECIFRA (fonte única).
+// Desenvolvimento: SQLite (zero configuração). Produção/Docker: PostgreSQL.
+// O schema de PostgreSQL (prisma/postgres/schema.prisma) é GERADO a partir
+// deste arquivo: depois de mudar um modelo, rode `npm run schema:postgres -w @decifra/api`
+// e crie as migrações dos dois bancos (ver docs/MODELO_DE_DADOS.md).
+// Listas são guardadas como JSON em texto para o schema ser igual nos dois bancos.
+// A URL do banco fica em prisma.config.ts (Prisma 7).
 
 generator client {
-  provider = "prisma-client-js"
+  provider     = "prisma-client"
+  output       = "../generated/prisma"
+  moduleFormat = "esm"
 }
 
 datasource db {
   provider = "sqlite"
-  url      = env("DATABASE_URL")
 }
 
 model User {
@@ -36,6 +39,7 @@ model User {
   desafios      Challenge[]
   entregas      Submission[]
   interacoesIA  AiInteraction[]
+  feedbacks     Feedback[]
 }
 
 model Session {
@@ -93,6 +97,7 @@ model Job {
   texto        String
   fonte        String // ia | regras | empresa
   iaDescricao  String? // provedor e modelo que extraíram os requisitos (quando fonte = ia)
+  ajustada     Boolean          @default(false) // a pessoa corrigiu requisitos manualmente
   companyJobId String?
   createdAt    DateTime         @default(now())
   user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -127,7 +132,7 @@ model Task {
   titulo    String
   prazo     String // AAAA-MM-DD
   status    String   @default("a fazer")
-  tipo      String // mini | doc | verificar
+  tipo      String // mini | doc | verificar | mentor
   comp      String   @default("")
   evId      String?
   virou     Boolean  @default(false)
@@ -199,6 +204,7 @@ model Message {
   conteudo       String
   iaDescricao    String? // provedor e modelo que responderam
   interrompida   Boolean      @default(false)
+  acoes          String? // JSON: ações sugeridas pelo Mentor (criar tarefa/mini-projeto), executadas só com confirmação
   createdAt      DateTime     @default(now())
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
@@ -284,4 +290,21 @@ model AiInteraction {
 
   @@index([tarefa, createdAt])
   @@index([userId, createdAt])
+}
+
+/// Feedback de validação dado pela própria pessoa dentro do produto
+/// (instrumento das hipóteses do Status Report; ver docs/negocio/04-experimentacao-e-validacao.md).
+model Feedback {
+  id         String   @id @default(cuid())
+  userId     String
+  alvo       String // raio | mentor
+  refId      String // id da vaga (Raio-X) ou da mensagem do Mentor
+  util       Boolean
+  comentario String   @default("")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, alvo, refId])
+  @@index([alvo, createdAt])
 }

@@ -85,6 +85,28 @@ export const vagaCandidatoSchema = z.object({
 });
 export type VagaCandidatoInput = z.infer<typeof vagaCandidatoSchema>;
 
+/** Correção manual de requisito no Raio-X. */
+export const requisitoNovoSchema = z
+  .object({
+    nome: obrigatorio(80, "Informe o requisito."),
+    tipo: z.enum(["tecnica", "formal", "comportamental"]),
+    kind: z.enum(KINDS_FORMAL).nullable().optional(),
+    obrig: z.boolean(),
+  })
+  .refine((v) => v.tipo !== "formal" || !!v.kind, { message: "Diga que tipo de exigência formal é.", path: ["kind"] });
+export type RequisitoNovoInput = z.infer<typeof requisitoNovoSchema>;
+export const requisitoPesoSchema = z.object({ obrig: z.boolean() });
+
+/** Feedback de validação: "a decisão fez sentido?" (Raio-X) e "a resposta ajudou?" (Mentor). */
+export const feedbackSchema = z.object({
+  alvo: z.enum(["raio", "mentor"]),
+  refId: z.string().min(1),
+  util: z.boolean(),
+  comentario: texto(500).default(""),
+});
+
+export const acaoMentorSchema = z.object({ mensagemId: z.string().min(1), indice: z.number().int().min(0).max(5) });
+
 export const tarefaUpdateSchema = z
   .object({
     status: z.enum(STATUS_TAREFA.map((s) => s[0]) as [string, ...string[]]).optional(),

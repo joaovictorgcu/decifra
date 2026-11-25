@@ -7,7 +7,7 @@ import type {
   Task,
   User,
   CandidateProfile,
-} from "@prisma/client";
+} from "../../generated/prisma/client";
 import type {
   Evidencia,
   EtapaTransicao,

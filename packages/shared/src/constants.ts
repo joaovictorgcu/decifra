@@ -74,7 +74,7 @@ export const STATUS_TAREFA = [
 ] as const;
 export type StatusTarefa = (typeof STATUS_TAREFA)[number][0];
 
-export const TIPOS_TAREFA = ["mini", "doc", "verificar"] as const;
+export const TIPOS_TAREFA = ["mini", "doc", "verificar", "mentor"] as const;
 export type TipoTarefa = (typeof TIPOS_TAREFA)[number];
 
 export const ETAPAS_CANDIDATURA = ["Candidatei", "Sem retorno", "Entrevista", "Proposta", "Não avançou"] as const;

@@ -54,6 +54,12 @@ export class Disjuntor {
     }
   }
 
+  /** Esquece falhas e pausas (usado em testes e por quem quiser forçar nova tentativa). */
+  reiniciar() {
+    this.falhas.clear();
+    this.abertoAte.clear();
+  }
+
   /** Estado para diagnóstico (sem dados sensíveis). */
   estado(agora: number) {
     return [...this.abertoAte.entries()].filter(([, ate]) => ate > agora).map(([provedor, ate]) => ({ provedor, segundos: Math.ceil((ate - agora) / 1000) }));

@@ -1,3 +1,4 @@
+import type { AcaoMentor } from "@decifra/shared";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -5,6 +6,7 @@ import { api, conversarComMentor } from "../api/cliente";
 import { useAcao, useConversa, useConversas, useVaga } from "../api/consultas";
 import { Confirmar } from "../components/Confirmar";
 import { Markdown } from "../components/Markdown";
+import { PerguntaFeedback } from "../components/PerguntaFeedback";
 import { Cabecalho, Carregando, Falha, Vazio } from "../components/ui";
 import { avisar } from "../lib/avisos";
 import { dataBR } from "../lib/formato";
@@ -16,6 +18,53 @@ interface Msg {
   conteudo: string;
   ia: string | null;
   interrompida: boolean;
+  acoes: AcaoMentor[];
+  feedback: boolean | null;
+}
+
+/** Sugestões do Mentor: só entram no Plano quando a pessoa clica. */
+function AcoesSugeridas({ msg, aoAtualizar }: { msg: Msg; aoAtualizar: (acoes: AcaoMentor[]) => void }) {
+  const qc = useQueryClient();
+  const [executando, setExecutando] = useState<number | null>(null);
+  if (!msg.acoes.length) return null;
+  const temporaria = /^[ur]\d+$/.test(msg.id);
+  async function executar(indice: number) {
+    setExecutando(indice);
+    try {
+      const r = await api.post<{ acoes: AcaoMentor[] }>("/mentor/acoes", { mensagemId: msg.id, indice });
+      aoAtualizar(r.acoes);
+      avisar("Adicionado ao seu Plano");
+      await qc.invalidateQueries({ queryKey: ["tarefas"] });
+    } catch (e) {
+      avisar(e instanceof Error ? e.message : "Não foi possível adicionar.", "erro");
+    } finally {
+      setExecutando(null);
+    }
+  }
+  return (
+    <div className="acoes-mentor">
+      <p className="msg-origem">
+        <strong>Sugestões para o seu Plano</strong> (só entram se você adicionar)
+      </p>
+      <ul>
+        {msg.acoes.map((a, i) => (
+          <li key={i}>
+            <span>{a.tipo === "mini" ? `Mini-projeto de ${a.competencia}` : `${a.titulo} (prazo de ${a.prazoDias} dias)`}</span>
+            {a.executada ? (
+              <Link className="link" to="/plano">
+                ✓ No seu Plano
+              </Link>
+            ) : (
+              <button type="button" className="botao peq" disabled={temporaria || executando !== null} onClick={() => void executar(i)} aria-busy={executando === i || undefined}>
+                {executando === i && <span className="girando" aria-hidden="true" />}
+                Adicionar ao Plano
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 export function Mentor() {
@@ -49,7 +98,7 @@ export function Mentor() {
   useEffect(() => {
     if (enviando) return;
     if (!id) setMsgs([]);
-    else if (conversa.data) setMsgs(conversa.data.mensagens.map((m) => ({ id: m.id, papel: m.papel, conteudo: m.conteudo, ia: m.ia, interrompida: m.interrompida })));
+    else if (conversa.data) setMsgs(conversa.data.mensagens.map((m) => ({ id: m.id, papel: m.papel, conteudo: m.conteudo, ia: m.ia, interrompida: m.interrompida, acoes: m.acoes ?? [], feedback: m.feedback ?? null })));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, conversa.data]);
 
@@ -79,7 +128,11 @@ export function Mentor() {
     setAnuncio("Mentor respondendo…");
     const idUser = `u${Date.now()}`;
     const idResp = `r${Date.now()}`;
-    setMsgs((l) => [...l, { id: idUser, papel: "user", conteudo: m, ia: null, interrompida: false }, { id: idResp, papel: "assistant", conteudo: "", ia: null, interrompida: false }]);
+    setMsgs((l) => [
+      ...l,
+      { id: idUser, papel: "user", conteudo: m, ia: null, interrompida: false, acoes: [], feedback: null },
+      { id: idResp, papel: "assistant", conteudo: "", ia: null, interrompida: false, acoes: [], feedback: null },
+    ]);
     const ctrl = new AbortController();
     cancelar.current = ctrl;
     let novaId: string | null = null;
@@ -102,7 +155,7 @@ export function Mentor() {
           fim: (d) => {
             setAnuncio("O Mentor respondeu.");
             if (!id) novaId = d.conversaId;
-            atualizar((x) => ({ ...x, id: d.mensagem.id, ia: d.mensagem.ia, interrompida: d.mensagem.interrompida }));
+            atualizar((x) => ({ ...x, id: d.mensagem.id, ia: d.mensagem.ia, interrompida: d.mensagem.interrompida, acoes: d.mensagem.acoes ?? [], conteudo: d.mensagem.conteudo || x.conteudo }));
           },
           erro: (e) => {
             setErro({ mensagem: e, repetir: recebeu ? null : m });
@@ -229,6 +282,12 @@ export function Mentor() {
                   )
                 ) : (
                   <p style={{ whiteSpace: "pre-wrap" }}>{m.conteudo}</p>
+                )}
+                {m.papel === "assistant" && m.conteudo && (
+                  <AcoesSugeridas msg={m} aoAtualizar={(acoes) => setMsgs((l) => l.map((x) => (x.id === m.id ? { ...x, acoes } : x)))} />
+                )}
+                {m.papel === "assistant" && m.conteudo && !/^[ur]\d+$/.test(m.id) && (
+                  <PerguntaFeedback key={m.id} compacta alvo="mentor" refId={m.id} inicial={m.feedback} pergunta="Esta resposta ajudou?" />
                 )}
                 {m.papel === "assistant" && (m.ia || m.interrompida) && m.conteudo && (
                   <p className="msg-origem">

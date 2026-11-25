@@ -1,5 +1,5 @@
 import { historiaSchema, treinoSchema, type Feedback, type Fonte, type Historia } from "@decifra/shared";
-import type { InterviewStory } from "@prisma/client";
+import type { InterviewStory } from "../../generated/prisma/client";
 import type { FastifyInstance } from "fastify";
 import { descreverMeta, feedbackIA, historiaIA } from "../ai/tarefas";
 import { completa } from "../domain/raio";

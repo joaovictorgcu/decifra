@@ -183,7 +183,8 @@ export function carregarConfigIA(fonte: NodeJS.ProcessEnv, isProd: boolean, orig
         privacidade: e.OPENROUTER_SEM_COLETA ? "sem_treino" : "pode_treinar",
       });
     }
-    if (v("OLLAMA_MODEL") || e.OLLAMA_BASE_URL) adicionar("ollama", { baseURL: e.OLLAMA_BASE_URL ?? CATALOGO.ollama.baseURL, apiKey: "ollama" });
+    // Só o modelo habilita o Ollama; a URL sozinha (ex.: padrão do docker-compose) não.
+    if (v("OLLAMA_MODEL")) adicionar("ollama", { baseURL: e.OLLAMA_BASE_URL ?? CATALOGO.ollama.baseURL, apiKey: "ollama" });
     if (e.ANTHROPIC_API_KEY || fonte.ANTHROPIC_AUTH_TOKEN) adicionar("anthropic", { apiKey: e.ANTHROPIC_API_KEY, anthropicFallbacks: e.ANTHROPIC_FALLBACKS });
     // Na v1, OPENAI_API_KEY + openai-compatible apontava para o servidor compatível.
     if (e.OPENAI_API_KEY && legado !== "compativel") adicionar("openai", { apiKey: e.OPENAI_API_KEY });

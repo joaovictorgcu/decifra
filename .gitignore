@@ -14,3 +14,9 @@ e2e/.auth/
 .DS_Store
 .vscode/
 .idea/
+
+# Cliente Prisma gerado
+apps/api/generated/
+apps/api/*.db
+apps/api/*.db-journal
+apps/api/.pg-teste/

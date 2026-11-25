@@ -139,6 +139,57 @@ test.describe("jornada do candidato", () => {
     await expect(page.getByText(/mensagens restantes hoje/)).toBeVisible();
   });
 
+  test("Raio-X: ajustar requisitos recalcula a decisão; reanálise sem IA mantém os requisitos", async ({ page }) => {
+    await cadastrarCandidato(page);
+    await page.goto("/raio-x");
+    await page.getByLabel("Cole aqui a descrição da vaga").fill(VAGA);
+    await page.getByRole("button", { name: "Gerar Raio-X" }).click();
+    await expect(page.getByRole("region", { name: "Decisão" })).toContainText("Busque uma vaga mais compatível");
+
+    // Instrumento de validação (H1): a resposta fica salva.
+    const fb = page.getByRole("group", { name: "Esta decisão fez sentido para você?" });
+    await fb.getByRole("button", { name: "Não" }).click();
+    await fb.getByPlaceholder("O que não funcionou? (opcional)").fill("Python também é pedido");
+    await fb.getByRole("button", { name: "Enviar" }).click();
+    await expect(fb.getByText("Obrigado!")).toBeVisible();
+    await page.reload();
+    await expect(page.getByRole("group", { name: "Esta decisão fez sentido para você?" }).getByRole("button", { name: "Não" })).toHaveAttribute("aria-pressed", "true");
+
+    await page.getByRole("button", { name: "Ajustar requisitos" }).click();
+    await page.getByLabel("Peso de Power BI").selectOption("0");
+    await page.getByLabel("Peso de Análise de indicadores").selectOption("0");
+    // Justificativa recalculada: agora só SQL é lacuna obrigatória.
+    await expect(page.getByRole("region", { name: "Decisão" })).toContainText("SQL ainda não aparece nas suas evidências");
+    await page.getByLabel("Requisito", { exact: true }).fill("Python");
+    await page.getByLabel("Peso na vaga").selectOption("0");
+    await page.getByRole("button", { name: "Adicionar requisito" }).click();
+    await expect(page.getByRole("button", { name: "Remover Python" })).toBeVisible();
+    await page.getByRole("button", { name: "Concluir" }).click();
+    await expect(page.getByText("Requisitos ajustados por você")).toBeVisible();
+
+    // O simulador de testes não extrai requisitos: a reanálise falha e nada muda.
+    await page.getByRole("button", { name: "Reanalisar com IA" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Reanalisar" }).click();
+    await expect(page.locator("#avisos")).toContainText("Seus requisitos atuais foram mantidos");
+    await expect(page.getByText("Requisitos ajustados por você")).toBeVisible();
+  });
+
+  test("Mentor: ações sugeridas só entram no Plano com confirmação", async ({ page }) => {
+    await cadastrarCandidato(page);
+    await irPara(page, "Mentor");
+    await page.getByLabel("Sua mensagem").fill("O que faço esta semana? #acoes");
+    await page.getByRole("button", { name: "Enviar" }).click();
+    await expect(page.getByText("Sugestões para o seu Plano")).toBeVisible();
+    await expect(page.getByText("<acoes>")).toHaveCount(0);
+    await page.getByRole("button", { name: "Adicionar ao Plano" }).first().click();
+    await expect(page.getByRole("link", { name: "✓ No seu Plano" })).toBeVisible();
+    await irPara(page, "Plano");
+    await expect(page.getByText("Documentar o painel de vendas com problema, dados e resultado")).toBeVisible();
+    await expect(page.getByText("Sugestão do Mentor")).toBeVisible();
+    // A segunda sugestão não foi aceita, então não está no Plano.
+    await expect(page.getByText("Monte um dashboard em Power BI")).toHaveCount(0);
+  });
+
   test("login com senha errada mostra erro e sessão protege rotas", async ({ page }) => {
     await page.goto("/inicio");
     await expect(page).toHaveURL(/\/entrar/);

@@ -16,6 +16,7 @@ beforeEach(async () => {
   tIA.fake!.textoChat = "Olá! Comece pelo mini-projeto de SQL.";
   tIA.fake!.pedidos = [];
   tIA.logs.length = 0;
+  tIA.disjuntor.reiniciar();
 });
 
 afterAll(async () => {
@@ -221,6 +222,59 @@ describe("Raio-X", () => {
   });
 });
 
+describe("ajuste e reanálise do Raio-X", () => {
+  it("a pessoa corrige peso, remove e adiciona requisitos; a decisão é recalculada", async () => {
+    const c = await novoCandidato(t.app);
+    const v = (await c.post("/api/vagas", { texto: VAGA_DADOS })).json();
+    const pbi = v.raio.reqs.find((q: { curto: string }) => q.curto === "Power BI");
+    const p = await c.patch(`/api/vagas/${v.id}/requisitos/${pbi.id}`, { obrig: false });
+    expect(p.json().raio.reqs.find((q: { id: string }) => q.id === pbi.id).obrig).toBe(false);
+    expect(p.json().ajustada).toBe(true);
+    const add = await c.post(`/api/vagas/${v.id}/requisitos`, { nome: "Python", tipo: "tecnica", obrig: false });
+    expect(add.statusCode).toBe(201);
+    expect(add.json().raio.reqs.some((q: { curto: string; obrig: boolean }) => q.curto === "Python" && !q.obrig)).toBe(true);
+    expect((await c.post(`/api/vagas/${v.id}/requisitos`, { nome: "python", tipo: "tecnica", obrig: true })).statusCode).toBe(409);
+    expect((await c.post(`/api/vagas/${v.id}/requisitos`, { nome: "Pós", tipo: "formal", obrig: true })).json().campo).toBe("kind");
+    const del = await c.del(`/api/vagas/${v.id}/requisitos/${pbi.id}`);
+    expect(del.json().raio.reqs.some((q: { id: string }) => q.id === pbi.id)).toBe(false);
+    // Outra pessoa não altera a vaga.
+    const outra = await novoCandidato(t.app, "bia@teste.dev");
+    expect((await outra.patch(`/api/vagas/${v.id}/requisitos/${v.raio.reqs[0].id}`, { obrig: false })).statusCode).toBe(404);
+  });
+
+  it("vaga publicada por empresa não pode ser alterada pelo candidato", async () => {
+    const emp = await novaEmpresa(t.app);
+    const a = (await emp.post("/api/empresa/vagas/analisar", { titulo: "Dados", texto: VAGA_DADOS })).json();
+    const pub = (await emp.post("/api/empresa/vagas", { titulo: "Dados", texto: VAGA_DADOS, requisitos: a.requisitos })).json();
+    const c = await novoCandidato(t.app);
+    const v = (await c.post(`/api/vagas-abertas/${pub.id}/raio`)).json();
+    expect((await c.patch(`/api/vagas/${v.id}/requisitos/${v.raio.reqs[0].id}`, { obrig: false })).json().codigo).toBe("vaga_empresa");
+    expect((await c.post(`/api/vagas/${v.id}/reanalisar`)).json().codigo).toBe("vaga_empresa");
+  });
+
+  it("reanalisar com IA substitui os requisitos e não consome Raio-X do mês", async () => {
+    const c = await novoCandidato(tIA.app);
+    // Falha comum (não 429): o disjuntor do app de teste é compartilhado e um 429 pausaria o provedor para os próximos testes.
+    tIA.fake!.falhar = new ErroIA("falha", "fora do ar");
+    const v = (await c.post("/api/vagas", { texto: VAGA_DADOS })).json();
+    expect(v.fonte).toBe("regras");
+    // IA continua fora: requisitos atuais são mantidos.
+    expect((await c.post(`/api/vagas/${v.id}/reanalisar`)).statusCode).toBe(503);
+    tIA.fake!.falhar = null;
+    tIA.fake!.respostas.requisitos_da_vaga = {
+      requisitos: [
+        { requisito: "SQL", curto: "SQL", tipo: "tecnica", kind: "", obrig: true, evId: "" },
+        { requisito: "Python", curto: "Python", tipo: "tecnica", kind: "", obrig: false, evId: "" },
+      ],
+    };
+    const r = await c.post(`/api/vagas/${v.id}/reanalisar`);
+    expect(r.json()).toMatchObject({ fonte: "ia", ajustada: false });
+    expect(r.json().ia).toContain("Groq");
+    expect(r.json().raio.reqs.map((q: { curto: string }) => q.curto)).toEqual(["SQL", "Python"]);
+    expect((await c.get("/api/auth/sessao")).json().uso.raioMes).toBe(1);
+  });
+});
+
 describe("Plano, candidaturas e radar", () => {
   it("leva ações ao Plano sem duplicar e mini-projeto concluído vira evidência", async () => {
     const c = await novoCandidato(t.app);
@@ -366,6 +420,30 @@ describe("Mentor (IA conversacional)", () => {
     tIA.fake!.textoChat = "Olá! Comece pelo mini-projeto de SQL.";
   });
 
+  it("ações sugeridas ficam fora do texto e só entram no Plano com confirmação", async () => {
+    const c = await novoCandidato(tIA.app);
+    tIA.fake!.textoChat = 'Documente seu painel. <acoes>[{"tipo":"tarefa","titulo":"Documentar o painel de vendas no GitHub","prazoDias":5},{"tipo":"mini","competencia":"Power BI"}]</acoes>';
+    const r = await c.post("/api/mentor/mensagens", { mensagem: "O que eu faço esta semana?" });
+    // O bloco de ações nunca é enviado como texto visível.
+    expect(r.body).not.toContain("<acoes>");
+    expect(r.body).toContain("event: fim");
+    const conv = (await c.get("/api/mentor/conversas")).json().itens[0];
+    const msg = (await c.get(`/api/mentor/conversas/${conv.id}`)).json().mensagens[1];
+    expect(msg.conteudo).toBe("Documente seu painel.");
+    expect(msg.acoes).toHaveLength(2);
+    // Nada foi criado ainda.
+    expect((await c.get("/api/tarefas")).json().itens).toHaveLength(0);
+    const ok = await c.post("/api/mentor/acoes", { mensagemId: msg.id, indice: 0 });
+    expect(ok.statusCode).toBe(201);
+    expect(ok.json().tarefa).toMatchObject({ tipo: "mentor", titulo: "Documentar o painel de vendas no GitHub" });
+    expect((await c.post("/api/mentor/acoes", { mensagemId: msg.id, indice: 0 })).statusCode).toBe(409);
+    expect((await c.post("/api/mentor/acoes", { mensagemId: msg.id, indice: 1 })).json().tarefa.tipo).toBe("mini");
+    expect((await c.get("/api/tarefas")).json().itens).toHaveLength(2);
+    // Outra pessoa não executa ações desta mensagem.
+    const outra = await novoCandidato(tIA.app, "bia@teste.dev");
+    expect((await outra.post("/api/mentor/acoes", { mensagemId: msg.id, indice: 1 })).statusCode).toBe(404);
+  });
+
   it("sugere perguntas conforme a etapa e os dados da pessoa", async () => {
     const c = await novoCandidato(tIA.app);
     const s = (await c.get("/api/mentor/sugestoes")).json().itens;
@@ -465,6 +543,45 @@ describe("empresa, desafios e perfil público", () => {
     expect(JSON.stringify(pub)).not.toContain("ana@teste.dev");
     expect((await emp.get("/api/empresa/candidatos?q=sql")).json().itens).toHaveLength(1);
     expect((await emp.get("/api/empresa/candidatos?q=figma")).json().itens).toHaveLength(0);
+  });
+});
+
+describe("validação: feedback e métricas", () => {
+  it("feedback do Raio-X e do Mentor: só no que é seu, pode ser trocado e volta no detalhe", async () => {
+    const c = await novoCandidato(tIA.app);
+    const v = (await c.post("/api/vagas", { texto: VAGA_DADOS })).json();
+    expect(v.feedback).toBeNull();
+    expect((await c.post("/api/feedback", { alvo: "raio", refId: v.id, util: false, comentario: "Faltou Python" })).statusCode).toBe(200);
+    expect((await c.get(`/api/vagas/${v.id}`)).json().feedback).toBe(false);
+    await c.post("/api/feedback", { alvo: "raio", refId: v.id, util: true });
+    expect((await c.get(`/api/vagas/${v.id}`)).json().feedback).toBe(true);
+    expect(await db.feedback.count()).toBe(1);
+
+    await c.post("/api/mentor/mensagens", { mensagem: "Por onde começo?" });
+    const conv = (await c.get("/api/mentor/conversas")).json().itens[0];
+    const msg = (await c.get(`/api/mentor/conversas/${conv.id}`)).json().mensagens[1];
+    await c.post("/api/feedback", { alvo: "mentor", refId: msg.id, util: true });
+    expect((await c.get(`/api/mentor/conversas/${conv.id}`)).json().mensagens[1].feedback).toBe(true);
+
+    const outra = await novoCandidato(tIA.app, "bia@teste.dev");
+    expect((await outra.post("/api/feedback", { alvo: "raio", refId: v.id, util: true })).statusCode).toBe(404);
+    expect((await outra.post("/api/feedback", { alvo: "mentor", refId: msg.id, util: true })).statusCode).toBe(404);
+  });
+
+  it("métricas por hipótese a partir dos dados reais", async () => {
+    const { calcularMetricas } = await import("../src/lib/metricas");
+    const c = await novoCandidato(t.app);
+    const v = (await c.post("/api/vagas", { texto: VAGA_DADOS })).json();
+    await c.post("/api/feedback", { alvo: "raio", refId: v.id, util: true });
+    await c.post(`/api/vagas/${v.id}/plano`);
+    const tarefa = (await c.get("/api/tarefas")).json().itens[0];
+    await c.patch(`/api/tarefas/${tarefa.id}`, { status: "feito" });
+    const r = await calcularMetricas(db, 30);
+    const h = Object.fromEntries(r.hipoteses.map((x) => [x.id, x]));
+    expect(h.H1).toMatchObject({ valor: 1, n: 1, status: "amostra insuficiente" });
+    expect(h.H2).toMatchObject({ valor: 1, n: 1 });
+    expect(h.H3).toMatchObject({ valor: 1, n: 1 });
+    expect(r.volume).toMatchObject({ candidatosCadastrados: 1, candidatosAtivos: 1, raioX: 1 });
   });
 });
 

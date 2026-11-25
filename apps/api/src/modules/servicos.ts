@@ -1,4 +1,4 @@
-import type { User } from "@prisma/client";
+import type { User } from "../../generated/prisma/client";
 import { LIMITE_RAIO_GRATIS, type Sessao } from "@decifra/shared";
 import type { Contexto } from "../app";
 import type { Db } from "../lib/db";

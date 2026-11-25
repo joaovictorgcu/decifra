@@ -119,6 +119,10 @@ export interface VagaDetalhe extends VagaResumo {
   raio: RaioX;
   noPlano: boolean;
   candidaturaId: string | null;
+  /** A pessoa corrigiu requisitos manualmente. */
+  ajustada: boolean;
+  /** Resposta da pessoa a "a decisão fez sentido?" (null = ainda não respondeu). */
+  feedback: boolean | null;
 }
 
 export interface Tarefa {
@@ -249,8 +253,16 @@ export interface MensagemMentor {
   ia: string | null;
   /** A pessoa interrompeu a geração: o texto está incompleto. */
   interrompida: boolean;
+  /** Ações sugeridas pelo Mentor; só são executadas quando a pessoa confirma. */
+  acoes: AcaoMentor[];
+  /** Resposta da pessoa a "esta resposta ajudou?" (null = ainda não respondeu). */
+  feedback: boolean | null;
   criadaEm: string;
 }
+
+export type AcaoMentor =
+  | { tipo: "tarefa"; titulo: string; prazoDias: number; executada: boolean }
+  | { tipo: "mini"; competencia: string; executada: boolean };
 
 export interface Paginado<T> {
   itens: T[];

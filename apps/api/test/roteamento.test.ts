@@ -260,6 +260,11 @@ describe("configuração", () => {
     expect(() => carregarConfigIA({ AI_AVANCADO: "anthropic" }, false)).toThrow(/AI_AVANCADO/);
   });
 
+  it("OLLAMA_BASE_URL sem OLLAMA_MODEL não liga o Ollama (nem derruba a inicialização)", () => {
+    const cfg = carregarConfigIA({ OLLAMA_BASE_URL: "http://host.docker.internal:11434/v1" }, true);
+    expect(cfg.desligada).toBe(true);
+  });
+
   it("AI_DESATIVAR desliga um provedor mesmo com chave", () => {
     const cfg = carregarConfigIA({ GROQ_API_KEY: "g", GEMINI_API_KEY: "m", AI_DESATIVAR: "groq" }, false);
     expect([...cfg.provedores.keys()]).toEqual(["gemini"]);

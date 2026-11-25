@@ -1,5 +1,5 @@
-import { LIMITE_RAIO_GRATIS, vagaCandidatoSchema, type Fonte, type VagaDetalhe, type VagaResumo } from "@decifra/shared";
-import type { User } from "@prisma/client";
+import { LIMITE_RAIO_GRATIS, requisitoNovoSchema, requisitoPesoSchema, vagaCandidatoSchema, type Fonte, type VagaDetalhe, type VagaResumo } from "@decifra/shared";
+import type { User } from "../../generated/prisma/client";
 import type { FastifyInstance } from "fastify";
 import { descreverMeta, extrairRequisitosIA } from "../ai/tarefas";
 import { extrairRequisitos } from "../domain/extrair";
@@ -29,7 +29,10 @@ export async function rotasVagas(app: FastifyInstance) {
       include: { requisitos: true, candidatura: true, _count: { select: { tarefas: true } } },
     });
     if (!job) throw naoEncontrado("Vaga");
-    const evs = await evidenciasDe(db, userId);
+    const [evs, fb] = await Promise.all([
+      evidenciasDe(db, userId),
+      db.feedback.findUnique({ where: { userId_alvo_refId: { userId, alvo: "raio", refId: id } }, select: { util: true } }),
+    ]);
     const r = raio(vagaDom(job), evs);
     return {
       id: job.id,
@@ -44,6 +47,8 @@ export async function rotasVagas(app: FastifyInstance) {
       raio: r,
       noPlano: job._count.tarefas > 0,
       candidaturaId: job.candidatura?.id ?? null,
+      ajustada: job.ajustada,
+      feedback: fb?.util ?? null,
     };
   }
 
@@ -115,6 +120,82 @@ export async function rotasVagas(app: FastifyInstance) {
     const r = await db.job.deleteMany({ where: { id: req.params.id, userId: u.id } });
     if (!r.count) throw naoEncontrado("Vaga");
     return { ok: true };
+  });
+
+  /* ---------- Correção manual e reanálise ---------- */
+
+  /** Vaga da pessoa que pode ter requisitos alterados (as publicadas pela empresa seguem a decisão dela). */
+  async function vagaEditavel(userId: string, id: string) {
+    const job = await db.job.findFirst({ where: { id, userId }, include: { requisitos: true } });
+    if (!job) throw naoEncontrado("Vaga");
+    if (job.fonte === "empresa") {
+      throw new ErroApp(409, "vaga_empresa", "Os requisitos desta vaga foram definidos pela própria empresa e não podem ser alterados.");
+    }
+    return job;
+  }
+
+  app.patch<{ Params: { id: string; reqId: string } }>("/vagas/:id/requisitos/:reqId", async (req) => {
+    const u = exigirCandidato(req);
+    const d = validar(requisitoPesoSchema, req.body);
+    const job = await vagaEditavel(u.id, req.params.id);
+    if (!job.requisitos.some((r) => r.id === req.params.reqId)) throw naoEncontrado("Requisito");
+    await db.$transaction([
+      db.jobRequirement.update({ where: { id: req.params.reqId }, data: { obrig: d.obrig } }),
+      db.job.update({ where: { id: job.id }, data: { ajustada: true } }),
+    ]);
+    return detalhe(u.id, job.id);
+  });
+
+  app.delete<{ Params: { id: string; reqId: string } }>("/vagas/:id/requisitos/:reqId", async (req) => {
+    const u = exigirCandidato(req);
+    const job = await vagaEditavel(u.id, req.params.id);
+    if (!job.requisitos.some((r) => r.id === req.params.reqId)) throw naoEncontrado("Requisito");
+    if (job.requisitos.length <= 1) throw new ErroApp(409, "ultimo_requisito", "A vaga precisa de pelo menos um requisito. Adicione outro antes de remover este.");
+    await db.$transaction([
+      db.jobRequirement.delete({ where: { id: req.params.reqId } }),
+      db.job.update({ where: { id: job.id }, data: { ajustada: true } }),
+    ]);
+    return detalhe(u.id, job.id);
+  });
+
+  app.post<{ Params: { id: string } }>("/vagas/:id/requisitos", async (req, reply) => {
+    const u = exigirCandidato(req);
+    const d = validar(requisitoNovoSchema, req.body);
+    const job = await vagaEditavel(u.id, req.params.id);
+    if (job.requisitos.length >= 40) throw new ErroApp(409, "limite_requisitos", "A vaga já tem 40 requisitos.");
+    const repetido = job.requisitos.some((r) => r.curto.toLowerCase() === d.nome.toLowerCase());
+    if (repetido) throw new ErroApp(409, "duplicado", "Este requisito já está na vaga.", "nome");
+    const ordem = Math.max(-1, ...job.requisitos.map((r) => r.ordem)) + 1;
+    await db.$transaction([
+      db.jobRequirement.create({
+        data: { jobId: job.id, ordem, requisito: d.nome, curto: d.nome, tipo: d.tipo, kind: d.tipo === "formal" ? d.kind : null, obrig: d.obrig },
+      }),
+      db.job.update({ where: { id: job.id }, data: { ajustada: true } }),
+    ]);
+    return reply.status(201).send(await detalhe(u.id, job.id));
+  });
+
+  /**
+   * Refaz a leitura da vaga com IA (ex.: quando o Raio-X saiu pelo motor de regras
+   * porque a IA estava fora). Substitui os requisitos, inclusive ajustes manuais.
+   * Não consome Raio-X do mês (é a mesma vaga), mas conta na cota diária de IA.
+   */
+  app.post<{ Params: { id: string } }>("/vagas/:id/reanalisar", { config: { rateLimit: { max: 5, timeWindow: "1 minute" } } }, async (req) => {
+    const u = exigirCandidato(req);
+    const job = await vagaEditavel(u.id, req.params.id);
+    if (!ia.disponivelPara("extrair_requisitos")) throw new ErroApp(503, "ia_desativada", "A IA não está configurada neste ambiente.");
+    const evs = await evidenciasDe(db, u.id);
+    const r = await extrairRequisitosIA(ia, u.id, job.texto, evs);
+    if (!r) throw new ErroApp(503, "ia_indisponivel", "A IA não conseguiu analisar a vaga agora. Seus requisitos atuais foram mantidos. Tente de novo em instantes.");
+    await db.$transaction([
+      db.jobRequirement.deleteMany({ where: { jobId: job.id } }),
+      db.jobRequirement.createMany({
+        data: r.valor.map((q, i) => ({ jobId: job.id, ordem: i, requisito: q.requisito, curto: q.curto, tipo: q.tipo, kind: q.kind, obrig: q.obrig, evId: q.evId, aceita: q.aceita })),
+      }),
+      db.job.update({ where: { id: job.id }, data: { fonte: "ia", iaDescricao: descreverMeta(r.meta), ajustada: false } }),
+    ]);
+    req.log.info({ userId: u.id, jobId: job.id }, "raio-x reanalisado com IA");
+    return detalhe(u.id, job.id);
   });
 
   /** Leva as ações do Raio-X para o Plano de Evidências, sem duplicar tarefas. */

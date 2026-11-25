@@ -1,13 +1,15 @@
-import { AREAS, DECISOES, mensagemMentorSchema, type AreaId, type MensagemMentor } from "@decifra/shared";
-import type { Message, User } from "@prisma/client";
+import { AREAS, DECISOES, acaoMentorSchema, mensagemMentorSchema, type AcaoMentor, type AreaId, type MensagemMentor } from "@decifra/shared";
+import type { Message, User } from "../../generated/prisma/client";
 import type { FastifyInstance } from "fastify";
+import { FiltroAcoes, acoesGravadas, lerAcoes } from "../ai/acoes-mentor";
 import { redigirDadosPessoais } from "../ai/privacidade";
 import { SISTEMA_MENTOR, marcar } from "../ai/prompts";
 import { descreverMeta } from "../ai/tarefas";
 import { ErroIA, type MensagemIA } from "../ai/tipos";
-import { completa, faltas, raio } from "../domain/raio";
-import { hojeISO } from "../domain/texto";
-import { ErroApp, naoEncontrado, validar } from "../lib/erros";
+import { completa, faltas, miniDe, raio } from "../domain/raio";
+import { dataMais, hojeISO } from "../domain/texto";
+import { conflito, ErroApp, naoEncontrado, validar } from "../lib/erros";
+import { tarefaDto } from "../lib/mapear";
 import { lerLista } from "../lib/json";
 import { respostaErroIA } from "../lib/mensagens-ia";
 import { exigirCandidato } from "../plugins/auth";
@@ -17,12 +19,14 @@ import { contarUso, evidenciasDe, inicioDoDia, limiteMentor, vagasDe } from "./s
 const ORCAMENTO_CONTEXTO = 9000;
 const ORCAMENTO_HISTORICO = 10000;
 
-const dto = (m: Message): MensagemMentor => ({
+const dto = (m: Message, feedback: boolean | null = null): MensagemMentor => ({
   id: m.id,
   papel: m.papel as "user" | "assistant",
   conteudo: m.conteudo,
   ia: m.iaDescricao,
   interrompida: m.interrompida,
+  acoes: acoesGravadas(m.acoes),
+  feedback,
   criadaEm: m.createdAt.toISOString(),
 });
 
@@ -90,7 +94,9 @@ export async function rotasMentor(app: FastifyInstance) {
     const u = exigirCandidato(req);
     const c = await db.conversation.findFirst({ where: { id: req.params.id, userId: u.id }, include: { mensagens: { orderBy: { createdAt: "asc" } } } });
     if (!c) throw naoEncontrado("Conversa");
-    return { id: c.id, titulo: c.titulo, mensagens: c.mensagens.map(dto) };
+    const fbs = await db.feedback.findMany({ where: { userId: u.id, alvo: "mentor", refId: { in: c.mensagens.map((m) => m.id) } }, select: { refId: true, util: true } });
+    const porMsg = new Map(fbs.map((f) => [f.refId, f.util]));
+    return { id: c.id, titulo: c.titulo, mensagens: c.mensagens.map((m) => dto(m, porMsg.get(m.id) ?? null)) };
   });
 
   app.delete<{ Params: { id: string } }>("/mentor/conversas/:id", async (req) => {
@@ -98,6 +104,38 @@ export async function rotasMentor(app: FastifyInstance) {
     const r = await db.conversation.deleteMany({ where: { id: req.params.id, userId: u.id } });
     if (!r.count) throw naoEncontrado("Conversa");
     return { ok: true };
+  });
+
+  /**
+   * Executa uma ação sugerida pelo Mentor, sempre a pedido da pessoa (clique em
+   * "Adicionar ao Plano"). Cada ação só pode ser executada uma vez.
+   */
+  app.post("/mentor/acoes", async (req, reply) => {
+    const u = exigirCandidato(req);
+    const d = validar(acaoMentorSchema, req.body);
+    const m = await db.message.findFirst({ where: { id: d.mensagemId, papel: "assistant", conversation: { userId: u.id } } });
+    if (!m) throw naoEncontrado("Mensagem");
+    const acoes = acoesGravadas(m.acoes);
+    const a = acoes[d.indice];
+    if (!a) throw naoEncontrado("Ação");
+    if (a.executada) throw conflito("Esta sugestão já está no seu Plano.");
+    let tarefa;
+    if (a.tipo === "mini") {
+      const ja = await db.task.findFirst({ where: { userId: u.id, comp: a.competencia, tipo: "mini" } });
+      if (ja) throw conflito("Um mini-projeto desta competência já está no seu Plano.");
+      tarefa = await db.task.create({
+        data: { userId: u.id, titulo: `${miniDe(a.competencia)}.`, prazo: dataMais(7), tipo: "mini", comp: a.competencia },
+        include: { job: { select: { titulo: true } } },
+      });
+    } else {
+      tarefa = await db.task.create({
+        data: { userId: u.id, titulo: a.titulo, prazo: dataMais(a.prazoDias), tipo: "mentor" },
+        include: { job: { select: { titulo: true } } },
+      });
+    }
+    acoes[d.indice] = { ...a, executada: true };
+    await db.message.update({ where: { id: m.id }, data: { acoes: JSON.stringify(acoes) } });
+    return reply.status(201).send({ tarefa: tarefaDto(tarefa), acoes });
   });
 
   /** Perguntas iniciais escolhidas pela etapa e pelos dados da pessoa (sem IA). */
@@ -172,11 +210,13 @@ export async function rotasMentor(app: FastifyInstance) {
     });
 
     /** Grava a troca (pergunta e resposta, completa ou parcial) e consome a cota. */
-    const gravar = async (texto: string, iaDescricao: string | null, interrompida: boolean) => {
+    const gravar = async (texto: string, iaDescricao: string | null, interrompida: boolean, acoes: AcaoMentor[] = []) => {
       const c = conversa ?? (await db.conversation.create({ data: { userId: u.id, titulo: d.mensagem.replace(/\s+/g, " ").slice(0, 60) } }));
       const [, resposta] = await db.$transaction([
         db.message.create({ data: { conversationId: c.id, papel: "user", conteudo: d.mensagem } }),
-        db.message.create({ data: { conversationId: c.id, papel: "assistant", conteudo: texto, iaDescricao, interrompida } }),
+        db.message.create({
+          data: { conversationId: c.id, papel: "assistant", conteudo: texto || "(sem resposta)", iaDescricao, interrompida, acoes: acoes.length ? JSON.stringify(acoes) : null },
+        }),
         db.usageEvent.create({ data: { userId: u.id, tipo: "mentor" } }),
         db.conversation.update({ where: { id: c.id }, data: { updatedAt: new Date() } }),
       ]);
@@ -186,6 +226,8 @@ export async function rotasMentor(app: FastifyInstance) {
     enviar("inicio", {});
     let parcial = "";
     let descricao: string | null = null;
+    // O bloco <acoes> do fim da resposta não é mostrado como texto: vira botões de confirmação.
+    const filtro = new FiltroAcoes();
     try {
       const r = await ia.conversar(
         "mentor",
@@ -197,14 +239,22 @@ export async function rotasMentor(app: FastifyInstance) {
             enviar("meta", { ia: descricao });
           },
           aoReceber: (t) => {
-            parcial += t;
-            enviar("trecho", { t });
+            const visivel = filtro.processar(t);
+            if (!visivel) return;
+            parcial += visivel;
+            enviar("trecho", { t: visivel });
           },
         },
         { mensagem: d.mensagem, turnos: anteriores.length, evidencias: ctx.evidencias, vagas: ctx.vagas },
         cancelar.signal,
       );
-      const salvo = await gravar(r.dados, descreverMeta(r.meta), false);
+      const { pendente, bloco } = filtro.finalizar();
+      if (pendente) {
+        parcial += pendente;
+        enviar("trecho", { t: pendente });
+      }
+      const acoes = bloco ? lerAcoes(bloco) : [];
+      const salvo = await gravar(parcial.trim(), descreverMeta(r.meta), false, acoes);
       enviar("fim", salvo);
     } catch (e) {
       const erro = e instanceof ErroIA ? e : new ErroIA("falha", e instanceof Error ? e.message : "falha");

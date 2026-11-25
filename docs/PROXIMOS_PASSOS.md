@@ -28,4 +28,5 @@ Itens que mudam o escopo do produto ou dependem de serviços externos. Ficaram d
 - Cotas contadas na mesma transação que registra o uso (hoje, requisições simultâneas podem passar um pouco do limite).
 - O cadastro informa quando o e-mail já existe (escolha de usabilidade); com verificação de e-mail, dá para trocar por uma resposta neutra.
 - Conjunto de avaliação da extração de requisitos com vagas reais revisadas por empresas.
-- Migrar para o Prisma 7: as vulnerabilidades apontadas pelo `npm audit` (`effect`, `deepmerge-ts`) estão no CLI do Prisma 6, usado só em desenvolvimento e migrações; a correção exige a versão 7 (mudança de configuração e adaptadores de banco).
+- **Executar o Docker**: `Dockerfile` e `docker-compose.yml` prontos, mas não executados aqui (falta instalar o Docker Desktop, que exige WSL2 e permissão de administrador).
+- Lembretes de prazo (Plano e desafios) por e-mail: depende da escolha do serviço de e-mail.

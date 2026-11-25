@@ -12,14 +12,14 @@ Este repositório transforma o protótipo HTML original ([`prototype/DECIFRA.htm
 - **Diagnóstico** de 6 perguntas que classifica a etapa da transição e adapta a tela inicial.
 - **Banco de Evidências** (projetos, cursos, certificados, casos da carreira anterior), com indicação do que falta para cada evidência ficar bem documentada.
 - **Importar do currículo** (PDF/TXT) com IA: a IA propõe rascunhos de evidências usando só o que está escrito; a pessoa revisa e escolhe o que salvar.
-- **Raio-X da Vaga**: extração de requisitos (IA com fallback para motor de regras), cruzamento com as evidências, decisão, justificativa e próximos passos. Aceita colar o texto ou enviar PDF.
+- **Raio-X da Vaga**: extração de requisitos (IA com fallback para motor de regras), cruzamento com as evidências, decisão, justificativa e próximos passos. Aceita colar o texto ou enviar PDF. A pessoa pode **ajustar requisitos** e **reanalisar com IA**, e responde se a decisão fez sentido.
 - **Vagas publicadas na DECIFRA**: Raio-X de vagas revisadas pelas próprias empresas, com os pesos e decisões delas.
 - **Plano de Evidências**: ações do Raio-X viram tarefas com prazo; mini-projeto concluído vira evidência automaticamente.
 - **Tradutor de Experiência**: funções da carreira anterior traduzidas em competências da nova área.
 - **Radar de Vagas** (Plus): requisitos que se repetem e qual lacuna resolver primeiro.
 - **Candidaturas**: quadro por etapa, ligado ao Raio-X de cada vaga.
 - **Preparação para Entrevista** (Plus): histórias STAR a partir das evidências e feedback de respostas.
-- **Mentor DECIFRA** (IA): assistente conversacional em streaming que conhece o contexto real da pessoa, adaptado à etapa, com histórico, sugestões iniciais, cancelamento e indicação do modelo usado.
+- **Mentor DECIFRA** (IA): assistente conversacional em streaming que conhece o contexto real da pessoa, adaptado à etapa, com histórico, sugestões iniciais, cancelamento, indicação do modelo usado e **ações sugeridas** que entram no Plano só com confirmação.
 - **Perfil de Evidências**: página pública opcional (privada por padrão) para enviar no lugar de um currículo genérico.
 - **Minha conta**: troca de senha, exportação de dados e exclusão de conta (LGPD).
 
@@ -34,7 +34,7 @@ Este repositório transforma o protótipo HTML original ([`prototype/DECIFRA.htm
 |---|---|
 | Frontend | React 19, React Router 7, TanStack Query 5, Vite 8, CSS original do protótipo |
 | Backend | Node.js 20+, Fastify 5, Zod 4, TypeScript |
-| Banco | Prisma 6 + SQLite (local) / PostgreSQL (produção) |
+| Banco | Prisma 7 (driver adapters) + SQLite (local) / PostgreSQL (produção e Docker) |
 | IA | Groq, Google Gemini, OpenRouter e Ollama (gratuitos); Anthropic e OpenAI (opcionais); roteamento por tarefa e complexidade com fallback; motor de regras sem IA |
 | Testes | Vitest (domínio + integração da API), Playwright + axe-core (E2E, acessibilidade, desktop e celular) |
 
@@ -106,6 +106,8 @@ Outros comandos: `npm run admin -- uso-ia 7` (uso e latência da IA nos últimos
 | `npm start` | Sobe a API compilada (serve o frontend se `WEB_DIST` estiver definido) |
 | `npm run db:migrate` | Cria/aplica migrações em desenvolvimento |
 | `npm run db:deploy` | Aplica migrações em produção |
+| `npm run test:postgres -w @decifra/api` | Roda a suíte da API num PostgreSQL real embutido (sem Docker) |
+| `npm run admin -- metricas 30` | Métricas de validação das hipóteses do negócio (últimos 30 dias) |
 | `npm run typecheck` | Verificação de tipos de todos os pacotes |
 | `npm run lint` | ESLint (TypeScript e regras de hooks do React) |
 | `npm test` | Testes da API (unitários, integração, roteamento da IA, fuso) e do frontend (parser SSE e renderizador seguro), sem chamadas reais de IA |
@@ -140,7 +142,17 @@ decifra/
 └── docs/                     # documentação
 ```
 
+## Rodando com Docker (PostgreSQL)
+
+```bash
+docker compose up --build      # app em http://localhost:3333, com PostgreSQL
+```
+
+As chaves de IA (opcionais) vêm do seu `.env` ou do ambiente. O contêiner aplica as migrações ao subir. Detalhes em [docs/DEPLOY.md](docs/DEPLOY.md).
+
 ## Documentação
+
+- **[Status Report 2: negócio, proposta de valor, solução, validação e plano de 12 meses](docs/negocio/README.md)**
 
 - [Análise do protótipo](docs/ANALISE_PROTOTIPO.md): telas, fluxos, o que era simulado e o que foi corrigido.
 - [Arquitetura](docs/ARQUITETURA.md): tecnologias, decisões, backend, frontend e segurança.

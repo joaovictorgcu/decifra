@@ -56,7 +56,7 @@ export function Plano() {
                 </p>
                 <p className="apoio">
                   {t.vagaTitulo ? `${t.vagaTitulo} · ` : ""}
-                  {t.tipo === "mini" ? "Mini-projeto de até 1 semana" : "Ação do Raio-X"}
+                  {t.tipo === "mini" ? "Mini-projeto de até 1 semana" : t.tipo === "mentor" ? "Sugestão do Mentor" : "Ação do Raio-X"}
                   {atrasada && <strong style={{ color: "var(--ambar-texto)" }}> · Prazo vencido</strong>}
                 </p>
                 <div className="grade2">

@@ -12,7 +12,7 @@ for (const f of ["e2e.db", "e2e.db-journal"]) rmSync(path.join(api, "prisma", f)
 const env = {
   ...process.env,
   NODE_ENV: "test",
-  DATABASE_URL: "file:./e2e.db",
+  DATABASE_URL: "file:./prisma/e2e.db",
   HOST: "127.0.0.1",
   PORT: "3400",
   APP_ORIGIN: "http://localhost:3400",

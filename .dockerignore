@@ -1,0 +1,12 @@
+**/node_modules
+**/dist
+apps/api/generated
+apps/api/prisma/*.db*
+apps/api/.pg-teste
+.env
+.env.*
+!.env.example
+.git
+test-results
+playwright-report
+prototype

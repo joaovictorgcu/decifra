@@ -3,10 +3,12 @@
  *   npm run admin -- plano <email> <gratis|plus>   altera o plano de um candidato
  *   npm run admin -- uso-ia [dias]                  resumo de uso da IA (padrão: 7 dias)
  *   npm run admin -- limpar-sessoes                 remove sessões expiradas
+ *   npm run admin -- metricas [dias] [--json]       métricas de validação das hipóteses (padrão: 30 dias)
  */
-import { PrismaClient } from "@prisma/client";
+import { criarDb } from "../lib/db";
+import { calcularMetricas } from "../lib/metricas";
 
-const db = new PrismaClient();
+const db = criarDb();
 const [cmd, ...args] = process.argv.slice(2);
 
 async function main() {
@@ -48,8 +50,28 @@ async function main() {
       console.log(`${r.count} sessões expiradas removidas.`);
       break;
     }
+    case "metricas": {
+      const dias = Number(args.find((a) => /^\d+$/.test(a)) ?? 30);
+      const r = await calcularMetricas(db, dias);
+      if (args.includes("--json")) {
+        console.log(JSON.stringify(r, null, 2));
+        break;
+      }
+      console.log(`Métricas de validação: ${r.periodo.de} a ${r.periodo.ate}`);
+      console.table(
+        r.hipoteses.map((h) => ({
+          hipotese: `${h.id} ${h.hipotese}`,
+          valor: h.valor === null ? "—" : h.formato === "percentual" ? `${(h.valor * 100).toFixed(0)}%` : h.valor,
+          meta: h.formato === "percentual" ? `${(h.meta * 100).toFixed(0)}%` : h.meta,
+          n: `${h.n} (mín. ${h.nMinimo})`,
+          status: h.status,
+        })),
+      );
+      console.table(r.volume);
+      break;
+    }
     default:
-      console.log("Comandos: plano <email> <gratis|plus> | uso-ia [dias] | limpar-sessoes");
+      console.log("Comandos: plano <email> <gratis|plus> | uso-ia [dias] | limpar-sessoes | metricas [dias] [--json]");
   }
 }
 

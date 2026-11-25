@@ -26,6 +26,7 @@ import { rotasEmpresa } from "./modules/empresa";
 import { rotasDesafios } from "./modules/desafios";
 import { rotasPublico } from "./modules/publico";
 import { rotasArquivos } from "./modules/arquivos";
+import { rotasFeedback } from "./modules/feedback";
 
 export interface Contexto {
   env: Env;
@@ -138,6 +139,7 @@ export async function criarApp(ctx: Contexto): Promise<FastifyInstance> {
       await api.register(rotasDesafios);
       await api.register(rotasPublico);
       await api.register(rotasArquivos);
+      await api.register(rotasFeedback);
     },
     { prefix: "/api" },
   );

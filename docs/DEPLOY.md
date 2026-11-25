@@ -2,7 +2,18 @@
 
 A DECIFRA roda como **um único processo Node** que serve a API e o frontend estático. Funciona em qualquer plataforma que rode Node 20+ (Render, Railway, Fly.io, uma VM com PM2/systemd, contêiner).
 
-## Passos
+## Opção 1: Docker (recomendado)
+
+```bash
+docker compose up --build
+```
+
+Sobe o PostgreSQL e a aplicação (imagem multi-stage `node:24-bookworm-slim`, usuário sem privilégios, healthcheck em `/api/saude`). Ao iniciar, o contêiner roda `prisma migrate deploy` e depois o servidor. Para a nuvem, use o `Dockerfile` com um PostgreSQL gerenciado e defina as variáveis abaixo.
+
+> O `Dockerfile` e o `docker-compose.yml` ainda não foram executados com Docker nesta máquina (Docker não instalado). O mesmo caminho de produção foi validado fora do contêiner: cliente PostgreSQL gerado, build, `prisma migrate deploy` e `node dist/server.js` num PostgreSQL real.
+
+## Opção 2: Node direto
+
 
 ```bash
 npm ci

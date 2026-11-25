@@ -3,15 +3,22 @@ import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/cliente";
 import { useAcao, useVaga } from "../api/consultas";
+import { AjusteRequisitos } from "../components/AjusteRequisitos";
 import { Confirmar } from "../components/Confirmar";
+import { PerguntaFeedback } from "../components/PerguntaFeedback";
 import { Botao, Cabecalho, Carregando, EtqSituacao, Falha, OrigemResultado } from "../components/ui";
 import { avisar } from "../lib/avisos";
+import { useSessaoAtiva } from "../lib/sessao";
 
 export function RaioDetalhe() {
   const { id } = useParams();
   const nav = useNavigate();
   const q = useVaga(id);
+  const s = useSessaoAtiva();
   const [excluir, setExcluir] = useState(false);
+  const [ajustando, setAjustando] = useState(false);
+  const [reanalisar, setReanalisar] = useState(false);
+  const refazer = useAcao(() => api.post(`/vagas/${id}/reanalisar`));
   const aoPlano = useAcao(() => api.post<{ adicionadas: number }>(`/vagas/${id}/plano`));
   const candidatar = useAcao(() => api.post("/candidaturas", { vagaId: id }));
   const apagar = useAcao(() => api.del(`/vagas/${id}`));
@@ -46,9 +53,29 @@ export function RaioDetalhe() {
           </p>
         ))}
         <OrigemResultado fonte={v.fonte} ia={v.ia} />
+        {v.ajustada && <p className="fonte">• Requisitos ajustados por você</p>}
       </section>
+      <PerguntaFeedback key={v.id} alvo="raio" refId={v.id} inicial={v.feedback} pergunta="Esta decisão fez sentido para você?" />
+      {ajustando && <AjusteRequisitos vaga={v} aoFechar={() => setAjustando(false)} />}
       <section className="pilha">
-        <h2>Requisitos da vaga</h2>
+        <div className="linha entre">
+          <h2>Requisitos da vaga</h2>
+          {v.fonte !== "empresa" && (
+            <div className="linha">
+              {!ajustando && (
+                <button type="button" className="botao peq" onClick={() => setAjustando(true)}>
+                  Ajustar requisitos
+                </button>
+              )}
+              {s.ia.ativa && (
+                <button type="button" className="botao peq" onClick={() => setReanalisar(true)}>
+                  {v.fonte === "regras" ? "Reanalisar com IA" : "Ler a vaga de novo com IA"}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+        {v.fonte === "empresa" && <p className="apoio">Os requisitos e os pesos desta vaga foram definidos pela própria empresa.</p>}
         <div className="caixa-tab">
           <table>
             <thead>
@@ -133,6 +160,28 @@ export function RaioDetalhe() {
           Excluir esta vaga
         </button>
       </p>
+      <Confirmar
+        aberto={reanalisar}
+        titulo="Ler a vaga de novo com IA?"
+        confirmar="Reanalisar"
+        carregando={refazer.isPending}
+        aoFechar={() => setReanalisar(false)}
+        aoConfirmar={() =>
+          refazer.mutate(undefined, {
+            onSuccess: () => {
+              setReanalisar(false);
+              setAjustando(false);
+              avisar("Vaga reanalisada com IA");
+            },
+            onError: (e) => {
+              setReanalisar(false);
+              avisar(e.message, "erro");
+            },
+          })
+        }
+      >
+        <p>Os requisitos atuais{v.ajustada ? ", inclusive os seus ajustes," : ""} serão substituídos pela nova leitura. Isso não conta como um novo Raio-X do mês. Se a IA não responder, nada muda.</p>
+      </Confirmar>
       <Confirmar
         aberto={excluir}
         titulo="Excluir esta vaga?"
